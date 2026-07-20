@@ -3,6 +3,17 @@ import { createServerFn } from "@tanstack/react-start";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { verifyToken, TOKEN_COOKIE } from "~/auth";
 
+// ─── Actor images ──────────────────────────────────────────────────────────
+import professionalMaleImg from "../assets/actors/professional-male.jpg";
+import friendlyFemaleImg from "../assets/actors/friendly-female.jpg";
+import seniorExpertImg from "../assets/actors/senior-expert.jpg";
+import youngCreatorImg from "../assets/actors/young-creator.jpg";
+import casualMaleImg from "../assets/actors/casual-male.jpg";
+import warmFemaleImg from "../assets/actors/warm-female.jpg";
+import goldenRetrieverImg from "../assets/actors/golden-retriever.jpg";
+import tabbyCatImg from "../assets/actors/tabby-cat.jpg";
+import borderCollieImg from "../assets/actors/border-collie.jpg";
+
 // ─── Auth-protected loader ─────────────────────────────────────────────
 const getCurrentUser = createServerFn({ method: "GET" }).handler(async () => {
   const { getCookie } = await import("@tanstack/react-start/server");
@@ -174,21 +185,22 @@ interface Actor {
   category: "human" | "animal";
   emoji: string;
   color: string;
+  imgSrc: string;
 }
 
 const humanActors: Actor[] = [
-  { id: "human-1", name: "Professional Male", category: "human", emoji: "👨‍💼", color: "from-blue-600 to-blue-800" },
-  { id: "human-2", name: "Friendly Female", category: "human", emoji: "👩‍🦰", color: "from-pink-500 to-rose-700" },
-  { id: "human-3", name: "Senior Expert", category: "human", emoji: "👴", color: "from-gray-500 to-gray-700" },
-  { id: "human-4", name: "Young Creator", category: "human", emoji: "🧑‍🎤", color: "from-purple-500 to-violet-700" },
-  { id: "human-5", name: "Casual Male", category: "human", emoji: "👨", color: "from-emerald-500 to-teal-700" },
-  { id: "human-6", name: "Warm Female", category: "human", emoji: "👩‍🦱", color: "from-amber-500 to-orange-700" },
+  { id: "human-1", name: "Professional Male", category: "human", emoji: "👨‍💼", color: "from-blue-600 to-blue-800", imgSrc: professionalMaleImg },
+  { id: "human-2", name: "Friendly Female", category: "human", emoji: "👩‍🦰", color: "from-pink-500 to-rose-700", imgSrc: friendlyFemaleImg },
+  { id: "human-3", name: "Senior Expert", category: "human", emoji: "👴", color: "from-gray-500 to-gray-700", imgSrc: seniorExpertImg },
+  { id: "human-4", name: "Young Creator", category: "human", emoji: "🧑‍🎤", color: "from-purple-500 to-violet-700", imgSrc: youngCreatorImg },
+  { id: "human-5", name: "Casual Male", category: "human", emoji: "👨", color: "from-emerald-500 to-teal-700", imgSrc: casualMaleImg },
+  { id: "human-6", name: "Warm Female", category: "human", emoji: "👩‍🦱", color: "from-amber-500 to-orange-700", imgSrc: warmFemaleImg },
 ];
 
 const animalActors: Actor[] = [
-  { id: "animal-1", name: "Golden Retriever", category: "animal", emoji: "🐕", color: "from-yellow-500 to-yellow-700" },
-  { id: "animal-2", name: "Tabby Cat", category: "animal", emoji: "🐈", color: "from-orange-400 to-orange-600" },
-  { id: "animal-3", name: "Wise Owl", category: "animal", emoji: "🦉", color: "from-stone-500 to-stone-700" },
+  { id: "animal-1", name: "Golden Retriever", category: "animal", emoji: "🐕", color: "from-yellow-500 to-yellow-700", imgSrc: goldenRetrieverImg },
+  { id: "animal-2", name: "Tabby Cat", category: "animal", emoji: "🐈", color: "from-orange-400 to-orange-600", imgSrc: tabbyCatImg },
+  { id: "animal-3", name: "Border Collie", category: "animal", emoji: "🐕‍🦺", color: "from-slate-600 to-slate-800", imgSrc: borderCollieImg },
 ];
 
 const allActors = [...humanActors, ...animalActors];
@@ -362,9 +374,255 @@ function StudioPage() {
 
   const filteredActors = actorCategory === "human" ? humanActors : animalActors;
 
-  // ── Shared sub-components ──────────────────────────────────────────
+  // ── Render ──────────────────────────────────────────────────────────
+  return (
+    <div className="flex min-h-[calc(100dvh-65px)] bg-gray-950">
+      {/* Toast */}
+      {renderToast && (
+        <div className="fixed top-20 right-6 z-[100] animate-slide-in rounded-xl border border-green-500/30 bg-green-500/10 px-5 py-3 shadow-2xl backdrop-blur-md">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">🎉</span>
+            <div>
+              <p className="text-sm font-semibold text-green-300">Render Queued</p>
+              <p className="text-xs text-green-400/80">{renderToast}</p>
+            </div>
+            <button onClick={() => setRenderToast(null)} className="ml-2 text-gray-400 hover:text-white">
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
 
-  const ActorPanel = () => (
+      {/* ── Desktop layout: 3 columns ── */}
+      <div className="hidden w-full lg:flex">
+        {/* Left: Actor & Background */}
+        <div className="w-80 flex-shrink-0 border-r border-gray-800 bg-gray-950 p-5 overflow-y-auto">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-bold text-white">Actor & Background</h2>
+            <Link
+              to="/dashboard"
+              className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+            >
+              ← Dashboard
+            </Link>
+          </div>
+          <ActorPanel
+            actorCategory={actorCategory}
+            setActorCategory={setActorCategory}
+            filteredActors={filteredActors}
+            selectedActor={selectedActor}
+            setSelectedActor={setSelectedActor}
+            backgrounds={backgrounds}
+            selectedBg={selectedBg}
+            setSelectedBg={setSelectedBg}
+            customBgPrompt={customBgPrompt}
+            setCustomBgPrompt={setCustomBgPrompt}
+            customBgActive={customBgActive}
+            setCustomBgActive={setCustomBgActive}
+          />
+        </div>
+
+        {/* Center: Preview */}
+        <div className="flex-1 flex flex-col p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-bold text-white">Preview</h2>
+            <button
+              onClick={handleRender}
+              disabled={rendering || !script.trim() || !selectedActor}
+              className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 px-6 py-3 text-sm font-bold text-white shadow-lg shadow-indigo-600/30 transition-all hover:from-indigo-500 hover:to-purple-500 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
+            >
+              {rendering ? (
+                <>
+                  <Spinner /> Rendering...
+                </>
+              ) : (
+                <>
+                  🎬 Render Commercial
+                </>
+              )}
+            </button>
+          </div>
+          <PreviewPanel
+            customBgActive={customBgActive}
+            customBgPrompt={customBgPrompt}
+            selectedBg={selectedBg}
+            selectedActor={selectedActor}
+            fadeTransition={fadeTransition}
+            scenes={scenes}
+            activeScene={activeScene}
+            setActiveScene={setActiveScene}
+            script={script}
+            previewPlaying={previewPlaying}
+            startPreview={startPreview}
+            stopPreview={stopPreview}
+          />
+        </div>
+
+        {/* Right: Script */}
+        <div className="w-80 flex-shrink-0 border-l border-gray-800 bg-gray-950 p-5 overflow-y-auto">
+          <h2 className="mb-4 text-lg font-bold text-white">Script Assistant</h2>
+          <ScriptPanel
+            productDescription={productDescription}
+            setProductDescription={setProductDescription}
+            scriptTone={scriptTone}
+            setScriptTone={setScriptTone}
+            toneOptions={toneOptions}
+            generating={generating}
+            onGenerateScript={handleGenerateScript}
+            script={script}
+            setScript={setScript}
+            scriptNote={scriptNote}
+          />
+        </div>
+      </div>
+
+      {/* ── Mobile layout: tabs ── */}
+      <div className="flex w-full flex-col lg:hidden">
+        {/* Tab bar */}
+        <div className="flex border-b border-gray-800 bg-gray-950">
+          {(["actors", "preview", "script"] as const).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
+                activeTab === tab
+                  ? "border-b-2 border-indigo-500 text-white"
+                  : "text-gray-500"
+              }`}
+            >
+              {tab === "actors" && "🎭 Actor/BG"}
+              {tab === "preview" && "🎬 Preview"}
+              {tab === "script" && "📝 Script"}
+            </button>
+          ))}
+        </div>
+
+        {/* Tab content */}
+        <div className="flex-1 overflow-y-auto p-4">
+          {activeTab === "actors" && (
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-bold text-white">Actor & Background</h2>
+                <Link
+                  to="/dashboard"
+                  className="text-xs text-gray-500 hover:text-gray-300"
+                >
+                  ← Dashboard
+                </Link>
+              </div>
+              <ActorPanel
+                actorCategory={actorCategory}
+                setActorCategory={setActorCategory}
+                filteredActors={filteredActors}
+                selectedActor={selectedActor}
+                setSelectedActor={setSelectedActor}
+                backgrounds={backgrounds}
+                selectedBg={selectedBg}
+                setSelectedBg={setSelectedBg}
+                customBgPrompt={customBgPrompt}
+                setCustomBgPrompt={setCustomBgPrompt}
+                customBgActive={customBgActive}
+                setCustomBgActive={setCustomBgActive}
+              />
+            </div>
+          )}
+
+          {activeTab === "preview" && (
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-bold text-white">Preview</h2>
+                <button
+                  onClick={handleRender}
+                  disabled={rendering || !script.trim() || !selectedActor}
+                  className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 px-4 py-2 text-xs font-bold text-white shadow-lg shadow-indigo-600/30 transition-all hover:from-indigo-500 hover:to-purple-500 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
+                >
+                  {rendering ? (
+                    <>
+                      <Spinner /> ...
+                    </>
+                  ) : (
+                    <>
+                      🎬 Render
+                    </>
+                  )}
+                </button>
+              </div>
+              <div className="h-[60vh]">
+                <PreviewPanel
+                  customBgActive={customBgActive}
+                  customBgPrompt={customBgPrompt}
+                  selectedBg={selectedBg}
+                  selectedActor={selectedActor}
+                  fadeTransition={fadeTransition}
+                  scenes={scenes}
+                  activeScene={activeScene}
+                  setActiveScene={setActiveScene}
+                  script={script}
+                  previewPlaying={previewPlaying}
+                  startPreview={startPreview}
+                  stopPreview={stopPreview}
+                />
+              </div>
+            </div>
+          )}
+
+          {activeTab === "script" && (
+            <div>
+              <h2 className="mb-4 text-lg font-bold text-white">Script Assistant</h2>
+              <ScriptPanel
+                productDescription={productDescription}
+                setProductDescription={setProductDescription}
+                scriptTone={scriptTone}
+                setScriptTone={setScriptTone}
+                toneOptions={toneOptions}
+                generating={generating}
+                onGenerateScript={handleGenerateScript}
+                script={script}
+                setScript={setScript}
+                scriptNote={scriptNote}
+              />
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Standalone sub-components (extracted to avoid remount-on-render bug)
+// ═══════════════════════════════════════════════════════════════════════════
+
+interface ActorPanelProps {
+  actorCategory: "human" | "animal";
+  setActorCategory: (cat: "human" | "animal") => void;
+  filteredActors: Actor[];
+  selectedActor: Actor | null;
+  setSelectedActor: (actor: Actor) => void;
+  backgrounds: Background[];
+  selectedBg: Background | null;
+  setSelectedBg: (bg: Background) => void;
+  customBgPrompt: string;
+  setCustomBgPrompt: (val: string) => void;
+  customBgActive: boolean;
+  setCustomBgActive: (val: boolean) => void;
+}
+
+function ActorPanel({
+  actorCategory,
+  setActorCategory,
+  filteredActors,
+  selectedActor,
+  setSelectedActor,
+  backgrounds,
+  selectedBg,
+  setSelectedBg,
+  customBgPrompt,
+  setCustomBgPrompt,
+  customBgActive,
+  setCustomBgActive,
+}: ActorPanelProps) {
+  return (
     <div className="space-y-4">
       <div className="flex gap-2 rounded-lg bg-gray-800 p-1">
         <button
@@ -401,9 +659,13 @@ function StudioPage() {
             }`}
           >
             <div
-              className={`flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br ${actor.color} text-3xl shadow-md transition-transform group-hover:scale-105`}
+              className="h-16 w-16 overflow-hidden rounded-xl shadow-md transition-transform group-hover:scale-105"
             >
-              {actor.emoji}
+              <img
+                src={actor.imgSrc}
+                alt={actor.name}
+                className="h-full w-full object-cover"
+              />
             </div>
             <span className="text-xs font-medium text-gray-300 text-center leading-tight">
               {actor.name}
@@ -467,8 +729,38 @@ function StudioPage() {
       </div>
     </div>
   );
+}
 
-  const PreviewPanel = () => (
+interface PreviewPanelProps {
+  customBgActive: boolean;
+  customBgPrompt: string;
+  selectedBg: Background | null;
+  selectedActor: Actor | null;
+  fadeTransition: boolean;
+  scenes: { label: string; text: string }[];
+  activeScene: number;
+  setActiveScene: (i: number) => void;
+  script: string;
+  previewPlaying: boolean;
+  startPreview: () => void;
+  stopPreview: () => void;
+}
+
+function PreviewPanel({
+  customBgActive,
+  customBgPrompt,
+  selectedBg,
+  selectedActor,
+  fadeTransition,
+  scenes,
+  activeScene,
+  setActiveScene,
+  script,
+  previewPlaying,
+  startPreview,
+  stopPreview,
+}: PreviewPanelProps) {
+  return (
     <div className="flex h-full flex-col">
       {/* Storyboard area */}
       <div className="relative flex-1 overflow-hidden rounded-xl border border-gray-700 bg-gray-900">
@@ -491,9 +783,13 @@ function StudioPage() {
             }`}
           >
             <div
-              className={`flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-br ${selectedActor.color} text-5xl shadow-2xl shadow-black/50`}
+              className="h-24 w-24 overflow-hidden rounded-2xl shadow-2xl shadow-black/50"
             >
-              {selectedActor.emoji}
+              <img
+                src={selectedActor.imgSrc}
+                alt={selectedActor.name}
+                className="h-full w-full object-cover"
+              />
             </div>
             <p className="mt-3 rounded-full bg-black/40 px-4 py-1.5 text-sm font-medium text-white backdrop-blur-sm">
               {selectedActor.name}
@@ -572,8 +868,34 @@ function StudioPage() {
       )}
     </div>
   );
+}
 
-  const ScriptPanel = () => (
+interface ScriptPanelProps {
+  productDescription: string;
+  setProductDescription: (val: string) => void;
+  scriptTone: string;
+  setScriptTone: (val: string) => void;
+  toneOptions: string[];
+  generating: boolean;
+  onGenerateScript: () => void;
+  script: string;
+  setScript: (val: string) => void;
+  scriptNote: string;
+}
+
+function ScriptPanel({
+  productDescription,
+  setProductDescription,
+  scriptTone,
+  setScriptTone,
+  toneOptions,
+  generating,
+  onGenerateScript,
+  script,
+  setScript,
+  scriptNote,
+}: ScriptPanelProps) {
+  return (
     <div className="flex h-full flex-col space-y-4">
       {/* Product description */}
       <div>
@@ -601,7 +923,7 @@ function StudioPage() {
           ))}
         </select>
         <button
-          onClick={handleGenerateScript}
+          onClick={onGenerateScript}
           disabled={generating || !productDescription.trim()}
           className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition-all hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
         >
@@ -634,146 +956,6 @@ function StudioPage() {
           rows={12}
           className="h-full min-h-[200px] w-full rounded-lg border border-gray-600 bg-gray-800 px-3 py-2.5 text-sm text-gray-200 placeholder-gray-500 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 resize-none font-mono leading-relaxed"
         />
-      </div>
-    </div>
-  );
-
-  // ── Render ──────────────────────────────────────────────────────────
-  return (
-    <div className="flex min-h-[calc(100dvh-65px)] bg-gray-950">
-      {/* Toast */}
-      {renderToast && (
-        <div className="fixed top-20 right-6 z-[100] animate-slide-in rounded-xl border border-green-500/30 bg-green-500/10 px-5 py-3 shadow-2xl backdrop-blur-md">
-          <div className="flex items-center gap-2">
-            <span className="text-lg">🎉</span>
-            <div>
-              <p className="text-sm font-semibold text-green-300">Render Queued</p>
-              <p className="text-xs text-green-400/80">{renderToast}</p>
-            </div>
-            <button onClick={() => setRenderToast(null)} className="ml-2 text-gray-400 hover:text-white">
-              ✕
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ── Desktop layout: 3 columns ── */}
-      <div className="hidden w-full lg:flex">
-        {/* Left: Actor & Background */}
-        <div className="w-80 flex-shrink-0 border-r border-gray-800 bg-gray-950 p-5 overflow-y-auto">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-bold text-white">Actor & Background</h2>
-            <Link
-              to="/dashboard"
-              className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
-            >
-              ← Dashboard
-            </Link>
-          </div>
-          <ActorPanel />
-        </div>
-
-        {/* Center: Preview */}
-        <div className="flex-1 flex flex-col p-5">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-bold text-white">Preview</h2>
-            <button
-              onClick={handleRender}
-              disabled={rendering || !script.trim() || !selectedActor}
-              className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 px-6 py-3 text-sm font-bold text-white shadow-lg shadow-indigo-600/30 transition-all hover:from-indigo-500 hover:to-purple-500 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
-            >
-              {rendering ? (
-                <>
-                  <Spinner /> Rendering...
-                </>
-              ) : (
-                <>
-                  🎬 Render Commercial
-                </>
-              )}
-            </button>
-          </div>
-          <PreviewPanel />
-        </div>
-
-        {/* Right: Script */}
-        <div className="w-80 flex-shrink-0 border-l border-gray-800 bg-gray-950 p-5 overflow-y-auto">
-          <h2 className="mb-4 text-lg font-bold text-white">Script Assistant</h2>
-          <ScriptPanel />
-        </div>
-      </div>
-
-      {/* ── Mobile layout: tabs ── */}
-      <div className="flex w-full flex-col lg:hidden">
-        {/* Tab bar */}
-        <div className="flex border-b border-gray-800 bg-gray-950">
-          {(["actors", "preview", "script"] as const).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
-                activeTab === tab
-                  ? "border-b-2 border-indigo-500 text-white"
-                  : "text-gray-500"
-              }`}
-            >
-              {tab === "actors" && "🎭 Actor/BG"}
-              {tab === "preview" && "🎬 Preview"}
-              {tab === "script" && "📝 Script"}
-            </button>
-          ))}
-        </div>
-
-        {/* Tab content */}
-        <div className="flex-1 overflow-y-auto p-4">
-          {activeTab === "actors" && (
-            <div>
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-bold text-white">Actor & Background</h2>
-                <Link
-                  to="/dashboard"
-                  className="text-xs text-gray-500 hover:text-gray-300"
-                >
-                  ← Dashboard
-                </Link>
-              </div>
-              <ActorPanel />
-            </div>
-          )}
-
-          {activeTab === "preview" && (
-            <div>
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-bold text-white">Preview</h2>
-                <button
-                  onClick={handleRender}
-                  disabled={rendering || !script.trim() || !selectedActor}
-                  className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 px-4 py-2 text-xs font-bold text-white shadow-lg shadow-indigo-600/30 transition-all hover:from-indigo-500 hover:to-purple-500 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
-                >
-                  {rendering ? (
-                    <>
-                      <Spinner /> ...
-                    </>
-                  ) : (
-                    <>
-                      🎬 Render
-                    </>
-                  )}
-                </button>
-              </div>
-              <div className="h-[60vh]">
-                <PreviewPanel />
-              </div>
-            </div>
-          )}
-
-          {activeTab === "script" && (
-            <div>
-              <h2 className="mb-4 text-lg font-bold text-white">Script Assistant</h2>
-              <ScriptPanel />
-            </div>
-          )}
-        </div>
       </div>
     </div>
   );

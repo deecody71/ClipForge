@@ -185,7 +185,7 @@ function splitSubtitles(
 export async function renderVideo(input: RenderInput): Promise<RenderResult> {
   const { jobId, config, projectRoot } = input;
 
-  const rendersDir = path.join(projectRoot, "public", "renders");
+  const rendersDir = path.join(projectRoot, "dist", "client", "renders");
   await mkdir(rendersDir, { recursive: true });
 
   const outputPath = path.join(rendersDir, `${jobId}.mp4`);

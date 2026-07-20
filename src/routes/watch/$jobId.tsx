@@ -169,75 +169,85 @@ function WatchPage() {
         {/* Video Player */}
         <div className="overflow-hidden rounded-2xl border border-gray-200 bg-black shadow-lg dark:border-gray-800">
           <div className="relative aspect-video w-full">
-            {/* Placeholder — real video rendering is not yet implemented */}
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
-              {/* Decorative film elements */}
-              <div className="mb-6 text-6xl">
-                {job.config?.actorEmoji || "🎬"}
-              </div>
-              <h2 className="text-xl font-bold text-white">{job.projectName}</h2>
-              <p className="mt-1 text-sm text-gray-400">
-                AI-Generated Commercial
-              </p>
-              <div className="mt-6 flex items-center gap-4 text-gray-500">
-                {job.config?.actorName && (
-                  <span className="inline-flex items-center gap-1.5 rounded-lg bg-gray-800 px-3 py-1.5 text-xs">
-                    <span>🎭</span> {job.config.actorName}
-                  </span>
-                )}
-                {job.config?.backgroundName && (
-                  <span className="inline-flex items-center gap-1.5 rounded-lg bg-gray-800 px-3 py-1.5 text-xs">
-                    <span>🖼️</span> {job.config.backgroundName}
-                  </span>
-                )}
-                {job.config?.tone && (
-                  <span className="inline-flex items-center gap-1.5 rounded-lg bg-gray-800 px-3 py-1.5 text-xs">
-                    <span>🎵</span> {job.config.tone}
-                  </span>
-                )}
-              </div>
-              <div className="mt-8 rounded-xl border border-gray-700 bg-gray-800/50 px-6 py-4 text-center">
-                <p className="text-sm font-medium text-indigo-300">
-                  🚀 Full video rendering is coming soon
+            {job.outputUrl ? (
+              <video
+                controls
+                className="w-full h-full object-contain rounded-xl"
+                src={job.outputUrl}
+              >
+                Your browser does not support the video tag.
+              </video>
+            ) : (
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
+                {/* Decorative film elements */}
+                <div className="mb-6 text-6xl">
+                  {job.config?.actorEmoji || "🎬"}
+                </div>
+                <h2 className="text-xl font-bold text-white">{job.projectName}</h2>
+                <p className="mt-1 text-sm text-gray-400">
+                  AI-Generated Commercial
                 </p>
-                <p className="mt-1 text-xs text-gray-500">
-                  The AI rendering pipeline is being connected. Your commercial will play here once rendering is live.
-                </p>
+                <div className="mt-6 flex items-center gap-4 text-gray-500">
+                  {job.config?.actorName && (
+                    <span className="inline-flex items-center gap-1.5 rounded-lg bg-gray-800 px-3 py-1.5 text-xs">
+                      <span>🎭</span> {job.config.actorName}
+                    </span>
+                  )}
+                  {job.config?.backgroundName && (
+                    <span className="inline-flex items-center gap-1.5 rounded-lg bg-gray-800 px-3 py-1.5 text-xs">
+                      <span>🖼️</span> {job.config.backgroundName}
+                    </span>
+                  )}
+                  {job.config?.tone && (
+                    <span className="inline-flex items-center gap-1.5 rounded-lg bg-gray-800 px-3 py-1.5 text-xs">
+                      <span>🎵</span> {job.config.tone}
+                    </span>
+                  )}
+                </div>
+                <div className="mt-8 rounded-xl border border-gray-700 bg-gray-800/50 px-6 py-4 text-center">
+                  <p className="text-sm font-medium text-indigo-300">
+                    🚀 Full video rendering is coming soon
+                  </p>
+                  <p className="mt-1 text-xs text-gray-500">
+                    The AI rendering pipeline is being connected. Your commercial will play here once rendering is live.
+                  </p>
+                </div>
               </div>
-            </div>
+            )}
           </div>
-
-          {/* Player Controls (mock) */}
-          <div className="flex items-center gap-4 border-t border-gray-800 bg-gray-900 px-6 py-4">
-            <button
-              className="rounded-lg p-2 text-gray-400 hover:bg-gray-800 hover:text-white transition-colors"
-              title="Play (coming soon)"
-            >
-              <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M8 5v14l11-7z" />
-              </svg>
-            </button>
-            <div className="h-1 flex-1 rounded-full bg-gray-700">
-              <div className="h-1 w-0 rounded-full bg-indigo-500" />
+          {/* Player Controls — only show for placeholder, not for real video */}
+          {!job.outputUrl && (
+            <div className="flex items-center gap-4 border-t border-gray-800 bg-gray-900 px-6 py-4">
+              <button
+                className="rounded-lg p-2 text-gray-400 hover:bg-gray-800 hover:text-white transition-colors"
+                title="Play (coming soon)"
+              >
+                <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M8 5v14l11-7z" />
+                </svg>
+              </button>
+              <div className="h-1 flex-1 rounded-full bg-gray-700">
+                <div className="h-1 w-0 rounded-full bg-indigo-500" />
+              </div>
+              <span className="text-xs text-gray-500 tabular-nums">0:00 / 2:00</span>
+              <button
+                className="rounded-lg p-2 text-gray-400 hover:bg-gray-800 hover:text-white transition-colors"
+                title="Volume"
+              >
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19.114 5.636a9 9 0 0 1 0 12.728M16.463 8.288a5.25 5.25 0 0 1 0 7.424M6.75 8.25l4.72-4.72a.75.75 0 0 1 1.28.53v15.88a.75.75 0 0 1-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.009 9.009 0 0 1 2.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75Z" />
+                </svg>
+              </button>
+              <button
+                className="rounded-lg p-2 text-gray-400 hover:bg-gray-800 hover:text-white transition-colors"
+                title="Fullscreen"
+              >
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 8.25M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15.75M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 8.25m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15.75" />
+                </svg>
+              </button>
             </div>
-            <span className="text-xs text-gray-500 tabular-nums">0:00 / 2:00</span>
-            <button
-              className="rounded-lg p-2 text-gray-400 hover:bg-gray-800 hover:text-white transition-colors"
-              title="Volume"
-            >
-              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M19.114 5.636a9 9 0 0 1 0 12.728M16.463 8.288a5.25 5.25 0 0 1 0 7.424M6.75 8.25l4.72-4.72a.75.75 0 0 1 1.28.53v15.88a.75.75 0 0 1-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.009 9.009 0 0 1 2.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75Z" />
-              </svg>
-            </button>
-            <button
-              className="rounded-lg p-2 text-gray-400 hover:bg-gray-800 hover:text-white transition-colors"
-              title="Fullscreen"
-            >
-              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 8.25M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15.75M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 8.25m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15.75" />
-              </svg>
-            </button>
-          </div>
+          )}
         </div>
 
         {/* Script Preview */}

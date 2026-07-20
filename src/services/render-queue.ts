@@ -1,4 +1,5 @@
 import { sql, ensureRenderJobsTable } from "~/db";
+import { renderVideo } from "./video-renderer";
 
 export interface RenderConfig {
   actorId: string;
@@ -25,10 +26,6 @@ export interface RenderJob {
   error_message: string | null;
   created_at: string;
   updated_at: string;
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**
@@ -61,7 +58,7 @@ export async function enqueueRender(
 }
 
 /**
- * Process a job asynchronously with simulated rendering progress.
+ * Process a job asynchronously using the real FFmpeg render pipeline.
  */
 async function processJobAsync(jobId: string): Promise<void> {
   const db = sql();
@@ -73,32 +70,66 @@ async function processJobAsync(jobId: string): Promise<void> {
     WHERE id = ${jobId}
   `;
 
-  // Simulate rendering with progress updates
-  const progressSteps = [25, 50, 75, 100];
-  const totalDuration = 2500; // 2.5 seconds total simulation
-  const stepDelay = totalDuration / progressSteps.length;
+  // Fetch the job config from the database
+  const rows = await db`
+    SELECT id, user_id, project_name, status, config, output_url, progress, error_message,
+           created_at, updated_at
+    FROM render_jobs
+    WHERE id = ${jobId}
+    LIMIT 1
+  `;
 
-  for (const step of progressSteps) {
-    await sleep(stepDelay);
-    try {
-      await db`
-        UPDATE render_jobs
-        SET progress = ${step}, updated_at = now()
-        WHERE id = ${jobId} AND status = 'processing'
-      `;
-    } catch (err) {
-      console.error(`[render-queue] Progress update failed for job ${jobId}:`, err);
-    }
+  if (rows.length === 0) {
+    console.error(`[render-queue] Job ${jobId} not found for processing`);
+    return;
   }
 
-  // Mark as completed — link to the watch page
-  const outputUrl = `/watch/${jobId}`;
+  const job = rowToJob(rows[0]);
 
-  await db`
-    UPDATE render_jobs
-    SET status = 'completed', progress = 100, output_url = ${outputUrl}, updated_at = now()
-    WHERE id = ${jobId}
-  `;
+  // Update progress to 25% before starting the render
+  try {
+    await db`
+      UPDATE render_jobs
+      SET progress = 25, updated_at = now()
+      WHERE id = ${jobId} AND status = 'processing'
+    `;
+  } catch (err) {
+    console.error(`[render-queue] Progress update failed for job ${jobId}:`, err);
+  }
+
+  try {
+    console.log(`[render-queue] Starting render for job ${jobId}...`);
+    const result = await renderVideo({
+      jobId,
+      config: job.config,
+      projectRoot: "/home/team/shared/site",
+    });
+
+    // Update progress to 90% after render completes
+    await db`
+      UPDATE render_jobs
+      SET progress = 90, updated_at = now()
+      WHERE id = ${jobId} AND status = 'processing'
+    `;
+
+    // Mark as completed with the real output URL
+    await db`
+      UPDATE render_jobs
+      SET status = 'completed', progress = 100, output_url = ${result.outputUrl}, updated_at = now()
+      WHERE id = ${jobId}
+    `;
+
+    console.log(`[render-queue] Job ${jobId} completed: ${result.outputUrl}`);
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    console.error(`[render-queue] Job ${jobId} failed:`, errorMessage);
+
+    await db`
+      UPDATE render_jobs
+      SET status = 'failed', progress = 0, error_message = ${errorMessage}, updated_at = now()
+      WHERE id = ${jobId}
+    `;
+  }
 }
 
 /**

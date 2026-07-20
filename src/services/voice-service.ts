@@ -22,8 +22,84 @@ export interface VoiceProvider {
 
 // ─── ElevenLabs implementation ─────────────────────────────────────────
 
-const ELEVENLABS_DEFAULT_VOICE = "21m00Tcm4TlvDq8ikWAM"; // Rachel — natural American female
 const ELEVENLABS_DEFAULT_MODEL = "eleven_turbo_v2_5"; // Fast, cost-effective model
+
+/**
+ * Free-tier fallback voice ID (Sarah — a standard premade ElevenLabs voice).
+ * Used when the voices API is unreachable or returns no premade voices.
+ */
+const FREE_TIER_FALLBACK_VOICE = "EXAVITQu4vr4xnSDxMaL";
+
+/** Cached default voice ID — set once on first call to avoid repeated API hits. */
+let cachedDefaultVoiceId: string | null = null;
+let voiceFetchPromise: Promise<string> | null = null;
+
+/**
+ * Fetch the best available voice from ElevenLabs' voices API.
+ * Filters for "premade" category voices (available on free tier).
+ * Results are cached in-memory for the lifetime of the server process.
+ *
+ * Falls back to `FREE_TIER_FALLBACK_VOICE` if the API call fails.
+ */
+async function getDefaultVoiceId(): Promise<string> {
+  if (cachedDefaultVoiceId) return cachedDefaultVoiceId;
+
+  // Avoid concurrent fetches — reuse the in-flight promise
+  if (voiceFetchPromise) return voiceFetchPromise;
+
+  voiceFetchPromise = (async (): Promise<string> => {
+    const apiKey = process.env.ELEVENLABS_API_KEY;
+    if (!apiKey) {
+      console.warn("[voice-service] No ELEVENLABS_API_KEY set — using fallback voice");
+      cachedDefaultVoiceId = FREE_TIER_FALLBACK_VOICE;
+      return cachedDefaultVoiceId;
+    }
+
+    try {
+      const res = await fetch("https://api.elevenlabs.io/v1/voices", {
+        headers: { "xi-api-key": apiKey },
+      });
+
+      if (!res.ok) {
+        console.warn(
+          `[voice-service] Voices API returned ${res.status} — using fallback voice`,
+        );
+        cachedDefaultVoiceId = FREE_TIER_FALLBACK_VOICE;
+        return cachedDefaultVoiceId;
+      }
+
+      const data = (await res.json()) as {
+        voices?: Array<{ voice_id: string; name: string; category: string }>;
+      };
+      const voices = data.voices || [];
+
+      // Filter for premade voices (available on free tier)
+      const premade = voices.filter((v) => v.category === "premade");
+
+      if (premade.length > 0) {
+        const chosen = premade[0];
+        console.log(
+          `[voice-service] Using voice "${chosen.name}" (${chosen.voice_id}) — premade, free-tier compatible`,
+        );
+        cachedDefaultVoiceId = chosen.voice_id;
+      } else {
+        console.warn(
+          "[voice-service] No premade voices found — using fallback voice",
+        );
+        cachedDefaultVoiceId = FREE_TIER_FALLBACK_VOICE;
+      }
+    } catch (err) {
+      console.warn(
+        `[voice-service] Voices API fetch failed: ${err instanceof Error ? err.message : err} — using fallback voice`,
+      );
+      cachedDefaultVoiceId = FREE_TIER_FALLBACK_VOICE;
+    }
+
+    return cachedDefaultVoiceId;
+  })();
+
+  return voiceFetchPromise;
+}
 
 const ELEVENLABS_ENDPOINT = (voiceId: string) =>
   `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`;
@@ -38,7 +114,7 @@ async function elevenLabsGenerateSpeech(
     throw new Error("ELEVENLABS_API_KEY is not set");
   }
 
-  const vid = voiceId || ELEVENLABS_DEFAULT_VOICE;
+  const vid = voiceId || (await getDefaultVoiceId());
   const mid = modelId || ELEVENLABS_DEFAULT_MODEL;
 
   const response = await fetch(ELEVENLABS_ENDPOINT(vid), {
@@ -108,7 +184,7 @@ export function getVoiceProvider(): VoiceProvider {
  * Generate speech audio from text.
  *
  * @param text    The text to convert to speech (max ~5000 characters for free tier).
- * @param voiceId Optional voice ID. Defaults to ElevenLabs "Rachel".
+ * @param voiceId Optional voice ID. Defaults to a free-tier ElevenLabs premade voice.
  * @returns       A Promise resolving to { audioUrl, duration }.
  *
  * NOTE: The free ElevenLabs tier allows ~10,000 characters per month.

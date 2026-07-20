@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { verifyToken, TOKEN_COOKIE } from "~/auth";
+import { handleGenerateVoice } from "./api/voice/generate";
 
 // ─── Actor images ──────────────────────────────────────────────────────────
 import professionalMaleImg from "../assets/actors/professional-male.jpg";
@@ -281,6 +282,16 @@ function StudioPage() {
   const [rendering, setRendering] = useState(false);
   const [renderToast, setRenderToast] = useState<string | null>(null);
 
+  // Voice / audio state
+  const [voiceGenerating, setVoiceGenerating] = useState(false);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [audioDuration, setAudioDuration] = useState(0);
+  const [audioPlaying, setAudioPlaying] = useState(false);
+  const [audioProgress, setAudioProgress] = useState(0);
+  const [voiceError, setVoiceError] = useState("");
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioProgressInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+
   // Toast auto-dismiss
   useEffect(() => {
     if (renderToast) {
@@ -380,6 +391,107 @@ function StudioPage() {
     };
   }, []);
 
+  // Clean up audio on unmount
+  useEffect(() => {
+    return () => {
+      if (audioProgressInterval.current) clearInterval(audioProgressInterval.current);
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+    };
+  }, []);
+
+  // ── Voice generation handler ──────────────────────────────────────
+  const handlePreviewAudio = async () => {
+    if (!script.trim()) return;
+    setVoiceGenerating(true);
+    setVoiceError("");
+    setAudioUrl(null);
+    setAudioPlaying(false);
+    setAudioProgress(0);
+
+    // Stop any existing audio
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    if (audioProgressInterval.current) {
+      clearInterval(audioProgressInterval.current);
+      audioProgressInterval.current = null;
+    }
+
+    try {
+      const result = await handleGenerateVoice({
+        data: { text: script },
+      });
+      setAudioUrl(result.audioUrl);
+      setAudioDuration(result.duration);
+
+      // Auto-play when audio arrives
+      const audio = new Audio(result.audioUrl);
+      audioRef.current = audio;
+      audio.play().catch((e) => console.warn("Audio autoplay blocked:", e));
+      setAudioPlaying(true);
+
+      // Track progress
+      audioProgressInterval.current = setInterval(() => {
+        if (audio && audio.duration && !audio.paused) {
+          setAudioProgress(audio.currentTime);
+        }
+      }, 100);
+
+      audio.addEventListener("ended", () => {
+        setAudioPlaying(false);
+        setAudioProgress(0);
+        if (audioProgressInterval.current) {
+          clearInterval(audioProgressInterval.current);
+          audioProgressInterval.current = null;
+        }
+      });
+
+      audio.addEventListener("pause", () => {
+        setAudioPlaying(false);
+      });
+
+      audio.addEventListener("play", () => {
+        setAudioPlaying(true);
+      });
+    } catch (err) {
+      console.error("Voice generation failed:", err);
+      setVoiceError(
+        err instanceof Error
+          ? err.message
+          : "Failed to generate audio. Please try again."
+      );
+    } finally {
+      setVoiceGenerating(false);
+    }
+  };
+
+  const handleToggleAudio = () => {
+    if (!audioRef.current) return;
+    if (audioPlaying) {
+      audioRef.current.pause();
+    } else {
+      audioRef.current.play().catch((e) => console.warn("Audio play failed:", e));
+    }
+  };
+
+  const handleAudioSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const time = parseFloat(e.target.value);
+    setAudioProgress(time);
+    if (audioRef.current) {
+      audioRef.current.currentTime = time;
+    }
+  };
+
+  const formatTime = (seconds: number) => {
+    const m = Math.floor(seconds / 60);
+    const s = Math.floor(seconds % 60);
+    return `${m}:${s.toString().padStart(2, "0")}`;
+  };
+
   // ── Auth guard render ──────────────────────────────────────────────
   if (!user) return null;
 
@@ -466,6 +578,16 @@ function StudioPage() {
             previewPlaying={previewPlaying}
             startPreview={startPreview}
             stopPreview={stopPreview}
+            voiceGenerating={voiceGenerating}
+            voiceError={voiceError}
+            audioUrl={audioUrl}
+            audioPlaying={audioPlaying}
+            audioDuration={audioDuration}
+            audioProgress={audioProgress}
+            onPreviewAudio={handlePreviewAudio}
+            onToggleAudio={handleToggleAudio}
+            onAudioSeek={handleAudioSeek}
+            formatTime={formatTime}
           />
         </div>
 
@@ -574,6 +696,16 @@ function StudioPage() {
                   previewPlaying={previewPlaying}
                   startPreview={startPreview}
                   stopPreview={stopPreview}
+                  voiceGenerating={voiceGenerating}
+                  voiceError={voiceError}
+                  audioUrl={audioUrl}
+                  audioPlaying={audioPlaying}
+                  audioDuration={audioDuration}
+                  audioProgress={audioProgress}
+                  onPreviewAudio={handlePreviewAudio}
+                  onToggleAudio={handleToggleAudio}
+                  onAudioSeek={handleAudioSeek}
+                  formatTime={formatTime}
                 />
               </div>
             </div>
@@ -759,6 +891,17 @@ interface PreviewPanelProps {
   previewPlaying: boolean;
   startPreview: () => void;
   stopPreview: () => void;
+  // Voice / audio props
+  voiceGenerating: boolean;
+  voiceError: string;
+  audioUrl: string | null;
+  audioPlaying: boolean;
+  audioDuration: number;
+  audioProgress: number;
+  onPreviewAudio: () => void;
+  onToggleAudio: () => void;
+  onAudioSeek: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  formatTime: (s: number) => string;
 }
 
 function PreviewPanel({
@@ -774,6 +917,16 @@ function PreviewPanel({
   previewPlaying,
   startPreview,
   stopPreview,
+  voiceGenerating,
+  voiceError,
+  audioUrl,
+  audioPlaying,
+  audioDuration,
+  audioProgress,
+  onPreviewAudio,
+  onToggleAudio,
+  onAudioSeek,
+  formatTime,
 }: PreviewPanelProps) {
   return (
     <div className="flex h-full flex-col">
@@ -835,25 +988,96 @@ function PreviewPanel({
         <div className="mt-3 space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-xs font-medium text-gray-500">Scene Timeline</span>
-            <button
-              onClick={previewPlaying ? stopPreview : startPreview}
-              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-                previewPlaying
-                  ? "bg-red-600/20 text-red-400 hover:bg-red-600/30"
-                  : "bg-indigo-600/20 text-indigo-400 hover:bg-indigo-600/30"
-              }`}
-            >
-              {previewPlaying ? (
-                <>
-                  <span>⏹</span> Stop
-                </>
-              ) : (
-                <>
-                  <span>▶</span> Preview All
-                </>
-              )}
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={previewPlaying ? stopPreview : startPreview}
+                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                  previewPlaying
+                    ? "bg-red-600/20 text-red-400 hover:bg-red-600/30"
+                    : "bg-indigo-600/20 text-indigo-400 hover:bg-indigo-600/30"
+                }`}
+              >
+                {previewPlaying ? (
+                  <>
+                    <span>⏹</span> Stop
+                  </>
+                ) : (
+                  <>
+                    <span>▶</span> Preview All
+                  </>
+                )}
+              </button>
+              <button
+                onClick={onPreviewAudio}
+                disabled={voiceGenerating || !script.trim()}
+                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                  voiceGenerating
+                    ? "bg-amber-600/20 text-amber-400 cursor-wait"
+                    : "bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/30"
+                } disabled:opacity-50 disabled:cursor-not-allowed`}
+              >
+                {voiceGenerating ? (
+                  <>
+                    <Spinner /> Generating...
+                  </>
+                ) : (
+                  <>
+                    <span>🔊</span> Preview Audio
+                  </>
+                )}
+              </button>
+            </div>
           </div>
+
+          {/* Voice error */}
+          {voiceError && (
+            <div className="flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-400">
+              <span className="flex-shrink-0 mt-0.5">⚠️</span>
+              <span className="flex-1">{voiceError}</span>
+            </div>
+          )}
+
+          {/* Audio player */}
+          {audioUrl && (
+            <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2.5">
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={onToggleAudio}
+                  className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white transition-colors hover:bg-emerald-500"
+                >
+                  {audioPlaying ? (
+                    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor">
+                      <rect x="6" y="4" width="4" height="16" rx="1" />
+                      <rect x="14" y="4" width="4" height="16" rx="1" />
+                    </svg>
+                  ) : (
+                    <svg className="h-3.5 w-3.5 ml-0.5" viewBox="0 0 24 24" fill="currentColor">
+                      <polygon points="5,3 19,12 5,21" />
+                    </svg>
+                  )}
+                </button>
+                <div className="flex-1 min-w-0">
+                  <input
+                    type="range"
+                    min={0}
+                    max={audioDuration || 1}
+                    step={0.1}
+                    value={audioProgress}
+                    onChange={onAudioSeek}
+                    className="w-full h-1.5 accent-emerald-500 cursor-pointer appearance-none bg-gray-700 rounded-full [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-emerald-400"
+                  />
+                  <div className="flex justify-between mt-1">
+                    <span className="text-[10px] text-gray-500">{formatTime(audioProgress)}</span>
+                    <span className="text-[10px] text-gray-500">{formatTime(audioDuration)}</span>
+                  </div>
+                </div>
+              </div>
+              <p className="mt-2 text-[10px] text-gray-500 text-center">
+                Voice by ElevenLabs • Free tier: ~10K chars/month
+              </p>
+            </div>
+          )}
+
           <div className="flex gap-2">
             {scenes.map((scene, i) => (
               <button

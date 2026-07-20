@@ -288,6 +288,36 @@ function StudioPage() {
   const [previewPlaying, setPreviewPlaying] = useState(false);
   const [fadeTransition, setFadeTransition] = useState(false);
   const previewTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const prevAudioSceneRef = useRef(0);
+
+  // ── Shared scene-transition helper (fades out → updates → fades in) ──
+  const transitionToScene = useCallback(
+    (idx: number) => {
+      if (idx === activeScene || idx >= scenes.length) return;
+      setFadeTransition(true);
+      setTimeout(() => {
+        setActiveScene(idx);
+        setFadeTransition(false);
+      }, 280);
+    },
+    [activeScene, scenes.length],
+  );
+
+  // Sync activeScene to audio position when audio is playing
+  useEffect(() => {
+    if (!audioPlaying || audioDuration <= 0 || scenes.length === 0 || previewPlaying) return;
+    const sceneDuration = audioDuration / scenes.length;
+    const idx = Math.min(Math.floor(audioProgress / sceneDuration), scenes.length - 1);
+    if (idx !== prevAudioSceneRef.current) {
+      prevAudioSceneRef.current = idx;
+      transitionToScene(idx);
+    }
+  }, [audioProgress, audioPlaying, audioDuration, scenes.length, previewPlaying, transitionToScene]);
+
+  // Reset audio scene tracker when new audio loads
+  useEffect(() => {
+    prevAudioSceneRef.current = 0;
+  }, [audioUrl]);
 
   // Render state
   const [rendering, setRendering] = useState(false);
@@ -375,18 +405,24 @@ function StudioPage() {
 
   const startPreview = useCallback(() => {
     if (scenes.length === 0) return;
+    // Stop audio if playing so visual-only preview takes over
+    if (audioRef.current && audioPlaying) {
+      audioRef.current.pause();
+      setAudioPlaying(false);
+    }
+    if (audioProgressInterval.current) {
+      clearInterval(audioProgressInterval.current);
+      audioProgressInterval.current = null;
+    }
     setPreviewPlaying(true);
     setActiveScene(0);
+    prevAudioSceneRef.current = 0;
     let idx = 0;
     previewTimer.current = setInterval(() => {
       idx = (idx + 1) % scenes.length;
-      setFadeTransition(true);
-      setTimeout(() => {
-        setActiveScene(idx);
-        setFadeTransition(false);
-      }, 300);
+      transitionToScene(idx);
     }, 2500);
-  }, [scenes]);
+  }, [scenes, audioPlaying, transitionToScene]);
 
   const stopPreview = useCallback(() => {
     setPreviewPlaying(false);
@@ -495,6 +531,8 @@ function StudioPage() {
     if (audioRef.current) {
       audioRef.current.currentTime = time;
     }
+    // Reset scene tracker so audio-sync picks up the new position
+    prevAudioSceneRef.current = -1;
   };
 
   const formatTime = (seconds: number) => {
@@ -943,195 +981,460 @@ function PreviewPanel({
   onAudioSeek,
   formatTime,
 }: PreviewPanelProps) {
+  // Extract dialogue text from a scene (text between quotes) for subtitles
+  const getDialogue = (sceneText: string): string => {
+    const quoted = sceneText.match(/"([^"]*)"/);
+    if (quoted) return quoted[1];
+    // Fallback: strip parenthetical stage directions
+    return sceneText.replace(/\([^)]*\)/g, "").trim();
+  };
+
+  const currentScene = scenes[activeScene];
+  const subtitleText = currentScene ? getDialogue(currentScene.text) : "";
+  const isVideoMode = !!audioUrl;
+  const progressPct = audioDuration > 0 ? (audioProgress / audioDuration) * 100 : 0;
+
+  // ── Render background element (reused in both modes) ──
+  const renderBackground = (overlayGradient = false) => {
+    const bgClasses = overlayGradient
+      ? "absolute inset-0"
+      : "absolute inset-0 transition-all duration-700";
+
+    if (!customBgActive && selectedBg) {
+      return (
+        <div className={bgClasses}>
+          <img
+            src={selectedBg.imgSrc}
+            alt={selectedBg.name}
+            className="h-full w-full object-cover"
+          />
+        </div>
+      );
+    }
+    return (
+      <div
+        className={`${bgClasses} bg-gradient-to-br ${
+          customBgActive
+            ? "from-purple-600 via-fuchsia-500 to-indigo-600"
+            : selectedBg?.gradient || "from-gray-700 to-gray-900"
+        }`}
+      >
+        {customBgActive && (
+          <div className="flex h-full items-center justify-center text-gray-300/60 text-sm italic">
+            {customBgPrompt || "Custom background — describe it above ✨"}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="flex h-full flex-col">
-      {/* Storyboard area */}
-      <div className="relative flex-1 overflow-hidden rounded-xl border border-gray-700 bg-gray-900">
-        {/* Background layer */}
-        <div className="absolute inset-0 transition-all duration-700">
-          {/* Show background image when a preset is selected and not custom */}
-          {!customBgActive && selectedBg && (
-            <img
-              src={selectedBg.imgSrc}
-              alt={selectedBg.name}
-              className="h-full w-full object-cover"
-            />
-          )}
-          {/* Fallback gradient when custom or no bg */}
-          {(customBgActive || !selectedBg) && (
-            <div
-              className={`h-full w-full bg-gradient-to-br ${customBgActive ? "from-purple-600 via-fuchsia-500 to-indigo-600" : (selectedBg?.gradient || "from-gray-700 to-gray-900")}`}
-            >
-              {customBgActive && (
-                <div className="flex h-full items-center justify-center text-gray-300/60 text-sm italic">
-                  {customBgPrompt || "Custom background — describe it above ✨"}
+      {/* CSS keyframe animations — injected once */}
+      <style>{`
+        @keyframes cf-actor-talk {
+          0%, 100% { transform: scale(1); filter: brightness(1) drop-shadow(0 0 0px rgba(255,255,255,0)); }
+          50%      { transform: scale(1.025); filter: brightness(1.12) drop-shadow(0 0 14px rgba(255,255,255,0.3)); }
+        }
+        @keyframes cf-actor-talk-subtle {
+          0%, 100% { filter: brightness(1) drop-shadow(0 0 0px rgba(255,255,255,0)); }
+          50%      { filter: brightness(1.05) drop-shadow(0 0 6px rgba(255,255,255,0.15)); }
+        }
+      `}</style>
+
+      {/* ═══ Video Player Mode (16:9 cinematic) ═══ */}
+      {isVideoMode ? (
+        <div className="flex flex-col flex-1 min-h-0">
+          {/* 16:9 video container */}
+          <div
+            className="relative w-full overflow-hidden rounded-xl border border-gray-700 bg-black flex-shrink-0"
+            style={{ aspectRatio: "16/9" }}
+          >
+            {/* Background — full bleed */}
+            <div className="absolute inset-0">
+              {!customBgActive && selectedBg && (
+                <img
+                  src={selectedBg.imgSrc}
+                  alt={selectedBg.name}
+                  className="h-full w-full object-cover"
+                />
+              )}
+              {(customBgActive || !selectedBg) && (
+                <div
+                  className={`h-full w-full bg-gradient-to-br ${
+                    customBgActive
+                      ? "from-purple-600 via-fuchsia-500 to-indigo-600"
+                      : selectedBg?.gradient || "from-gray-700 to-gray-900"
+                  }`}
+                >
+                  {customBgActive && (
+                    <div className="flex h-full items-center justify-center text-gray-300/60 text-sm italic">
+                      {customBgPrompt || "Custom background — describe it above ✨"}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Dark gradient overlay at bottom — subtitles readability */}
+            <div className="absolute bottom-0 left-0 right-0 h-2/5 bg-gradient-to-t from-black/75 via-black/30 to-transparent pointer-events-none" />
+
+            {/* Actor overlay with talking animation */}
+            {selectedActor && (
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <div
+                  style={{
+                    animation: audioPlaying
+                      ? `cf-actor-talk 0.85s ease-in-out infinite`
+                      : "none",
+                  }}
+                >
+                  <div className="h-36 w-36 sm:h-44 sm:w-44 overflow-hidden rounded-2xl shadow-2xl shadow-black/70 ring-2 ring-white/10">
+                    <img
+                      src={selectedActor.imgSrc}
+                      alt={selectedActor.name}
+                      className="h-full w-full object-cover"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Scene label badge */}
+            {currentScene && (
+              <div className="absolute top-3 left-3 rounded-full bg-indigo-600/85 px-3 py-1 text-xs font-semibold text-white backdrop-blur-sm z-10">
+                {currentScene.label}
+              </div>
+            )}
+
+            {/* ═══ Subtitle overlay ═══ */}
+            {subtitleText && (
+              <div className="absolute bottom-10 sm:bottom-12 left-0 right-0 flex justify-center px-6 z-10">
+                <div
+                  className={`transition-all duration-300 ease-out ${
+                    fadeTransition ? "opacity-0 translate-y-3" : "opacity-100 translate-y-0"
+                  }`}
+                >
+                  <span className="inline-block rounded-lg bg-black/65 backdrop-blur-md px-5 py-2.5 sm:px-6 sm:py-3 text-sm sm:text-base md:text-lg font-medium text-white text-center leading-relaxed shadow-xl max-w-xl sm:max-w-2xl">
+                    {subtitleText}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Progress bar — razor-thin, bottom edge */}
+            {audioDuration > 0 && (
+              <div className="absolute bottom-0 left-0 right-0 h-[3px] bg-gray-700/40 z-20">
+                <div
+                  className="h-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.5)] transition-[width] duration-150 ease-linear"
+                  style={{ width: `${progressPct}%` }}
+                />
+              </div>
+            )}
+
+            {/* Empty state */}
+            {!script && (
+              <div className="absolute inset-0 flex items-center justify-center z-10">
+                <div className="text-center">
+                  <div className="text-4xl mb-3">🎬</div>
+                  <p className="text-sm text-gray-500">Generate a script to see your storyboard</p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Controls & scene timeline (below the video player) */}
+          {scenes.length > 0 && (
+            <div className="mt-3 space-y-2 flex-shrink-0">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-gray-500">Scene Timeline</span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={previewPlaying ? stopPreview : startPreview}
+                    className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                      previewPlaying
+                        ? "bg-red-600/20 text-red-400 hover:bg-red-600/30"
+                        : "bg-indigo-600/20 text-indigo-400 hover:bg-indigo-600/30"
+                    }`}
+                  >
+                    {previewPlaying ? (
+                      <>
+                        <span>⏹</span> Stop
+                      </>
+                    ) : (
+                      <>
+                        <span>▶</span> Preview All
+                      </>
+                    )}
+                  </button>
+                  <button
+                    onClick={onPreviewAudio}
+                    disabled={voiceGenerating || !script.trim()}
+                    className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                      voiceGenerating
+                        ? "bg-amber-600/20 text-amber-400 cursor-wait"
+                        : "bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/30"
+                    } disabled:opacity-50 disabled:cursor-not-allowed`}
+                  >
+                    {voiceGenerating ? (
+                      <>
+                        <Spinner /> Generating...
+                      </>
+                    ) : (
+                      <>
+                        <span>🔊</span> Preview Audio
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Voice error */}
+              {voiceError && (
+                <div className="flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-400">
+                  <span className="flex-shrink-0 mt-0.5">⚠️</span>
+                  <span className="flex-1">{voiceError}</span>
+                </div>
+              )}
+
+              {/* Audio player controls */}
+              <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2.5">
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={onToggleAudio}
+                    className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white transition-colors hover:bg-emerald-500"
+                  >
+                    {audioPlaying ? (
+                      <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor">
+                        <rect x="6" y="4" width="4" height="16" rx="1" />
+                        <rect x="14" y="4" width="4" height="16" rx="1" />
+                      </svg>
+                    ) : (
+                      <svg className="h-3.5 w-3.5 ml-0.5" viewBox="0 0 24 24" fill="currentColor">
+                        <polygon points="5,3 19,12 5,21" />
+                      </svg>
+                    )}
+                  </button>
+                  <div className="flex-1 min-w-0">
+                    <input
+                      type="range"
+                      min={0}
+                      max={audioDuration || 1}
+                      step={0.1}
+                      value={audioProgress}
+                      onChange={onAudioSeek}
+                      className="w-full h-1.5 accent-emerald-500 cursor-pointer appearance-none bg-gray-700 rounded-full [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-emerald-400"
+                    />
+                    <div className="flex justify-between mt-1">
+                      <span className="text-[10px] text-gray-500">{formatTime(audioProgress)}</span>
+                      <span className="text-[10px] text-gray-500">{formatTime(audioDuration)}</span>
+                    </div>
+                  </div>
+                </div>
+                <p className="mt-2 text-[10px] text-gray-500 text-center">
+                  Voice by ElevenLabs • Free tier: ~10K chars/month
+                </p>
+              </div>
+
+              {/* Scene cards */}
+              <div className="flex gap-2">
+                {scenes.map((scene, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setActiveScene(i)}
+                    className={`flex-1 rounded-lg border-2 p-3 text-center transition-all duration-200 ${
+                      activeScene === i
+                        ? "border-indigo-500 bg-indigo-500/10 shadow-md shadow-indigo-500/10"
+                        : "border-gray-700 bg-gray-800/50 hover:border-gray-600"
+                    }`}
+                  >
+                    <div className="text-xs font-semibold text-gray-300">{scene.label}</div>
+                    <div className="mt-1 text-[10px] text-gray-500 line-clamp-2">
+                      {scene.text.slice(0, 60)}...
+                    </div>
+                  </button>
+                ))}
+              </div>
+              {/* Active scene text */}
+              {currentScene && (
+                <div className="rounded-lg border border-gray-700/50 bg-gray-800/50 p-3">
+                  <p className="text-xs font-semibold text-indigo-400 mb-1">{currentScene.label}</p>
+                  <p className="text-sm text-gray-300 leading-relaxed">{currentScene.text}</p>
                 </div>
               )}
             </div>
           )}
         </div>
+      ) : (
+        /* ═══ Storyboard Mode (static — no audio yet) ═══ */
+        <>
+          <div className="relative flex-1 overflow-hidden rounded-xl border border-gray-700 bg-gray-900">
+            {/* Background layer */}
+            {renderBackground()}
 
-        {/* Actor layer */}
-        {selectedActor && (
-          <div
-            className={`absolute inset-0 flex flex-col items-center justify-center transition-opacity duration-300 ${
-              fadeTransition ? "opacity-0" : "opacity-100"
-            }`}
-          >
-            <div
-              className="h-24 w-24 overflow-hidden rounded-2xl shadow-2xl shadow-black/50"
-            >
-              <img
-                src={selectedActor.imgSrc}
-                alt={selectedActor.name}
-                className="h-full w-full object-cover"
-              />
-            </div>
-            <p className="mt-3 rounded-full bg-black/40 px-4 py-1.5 text-sm font-medium text-white backdrop-blur-sm">
-              {selectedActor.name}
-            </p>
-          </div>
-        )}
-
-        {/* Scene label overlay */}
-        {scenes.length > 0 && scenes[activeScene] && (
-          <div className="absolute top-3 left-3 rounded-full bg-indigo-600/80 px-3 py-1 text-xs font-semibold text-white backdrop-blur-sm">
-            {scenes[activeScene].label}
-          </div>
-        )}
-
-        {/* Empty state */}
-        {!script && (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="text-center">
-              <div className="text-4xl mb-3">🎬</div>
-              <p className="text-sm text-gray-500">Generate a script to see your storyboard</p>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Scene timeline */}
-      {scenes.length > 0 && (
-        <div className="mt-3 space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-gray-500">Scene Timeline</span>
-            <div className="flex items-center gap-1.5">
-              <button
-                onClick={previewPlaying ? stopPreview : startPreview}
-                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-                  previewPlaying
-                    ? "bg-red-600/20 text-red-400 hover:bg-red-600/30"
-                    : "bg-indigo-600/20 text-indigo-400 hover:bg-indigo-600/30"
+            {/* Actor layer */}
+            {selectedActor && (
+              <div
+                className={`absolute inset-0 flex flex-col items-center justify-center transition-opacity duration-300 ${
+                  fadeTransition ? "opacity-0" : "opacity-100"
                 }`}
               >
-                {previewPlaying ? (
-                  <>
-                    <span>⏹</span> Stop
-                  </>
-                ) : (
-                  <>
-                    <span>▶</span> Preview All
-                  </>
-                )}
-              </button>
-              <button
-                onClick={onPreviewAudio}
-                disabled={voiceGenerating || !script.trim()}
-                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-                  voiceGenerating
-                    ? "bg-amber-600/20 text-amber-400 cursor-wait"
-                    : "bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/30"
-                } disabled:opacity-50 disabled:cursor-not-allowed`}
-              >
-                {voiceGenerating ? (
-                  <>
-                    <Spinner /> Generating...
-                  </>
-                ) : (
-                  <>
-                    <span>🔊</span> Preview Audio
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-
-          {/* Voice error */}
-          {voiceError && (
-            <div className="flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-400">
-              <span className="flex-shrink-0 mt-0.5">⚠️</span>
-              <span className="flex-1">{voiceError}</span>
-            </div>
-          )}
-
-          {/* Audio player */}
-          {audioUrl && (
-            <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2.5">
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={onToggleAudio}
-                  className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white transition-colors hover:bg-emerald-500"
-                >
-                  {audioPlaying ? (
-                    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor">
-                      <rect x="6" y="4" width="4" height="16" rx="1" />
-                      <rect x="14" y="4" width="4" height="16" rx="1" />
-                    </svg>
-                  ) : (
-                    <svg className="h-3.5 w-3.5 ml-0.5" viewBox="0 0 24 24" fill="currentColor">
-                      <polygon points="5,3 19,12 5,21" />
-                    </svg>
-                  )}
-                </button>
-                <div className="flex-1 min-w-0">
-                  <input
-                    type="range"
-                    min={0}
-                    max={audioDuration || 1}
-                    step={0.1}
-                    value={audioProgress}
-                    onChange={onAudioSeek}
-                    className="w-full h-1.5 accent-emerald-500 cursor-pointer appearance-none bg-gray-700 rounded-full [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-emerald-400"
+                <div className="h-24 w-24 overflow-hidden rounded-2xl shadow-2xl shadow-black/50">
+                  <img
+                    src={selectedActor.imgSrc}
+                    alt={selectedActor.name}
+                    className="h-full w-full object-cover"
                   />
-                  <div className="flex justify-between mt-1">
-                    <span className="text-[10px] text-gray-500">{formatTime(audioProgress)}</span>
-                    <span className="text-[10px] text-gray-500">{formatTime(audioDuration)}</span>
-                  </div>
+                </div>
+                <p className="mt-3 rounded-full bg-black/40 px-4 py-1.5 text-sm font-medium text-white backdrop-blur-sm">
+                  {selectedActor.name}
+                </p>
+              </div>
+            )}
+
+            {/* Scene label overlay */}
+            {scenes.length > 0 && scenes[activeScene] && (
+              <div className="absolute top-3 left-3 rounded-full bg-indigo-600/80 px-3 py-1 text-xs font-semibold text-white backdrop-blur-sm">
+                {scenes[activeScene].label}
+              </div>
+            )}
+
+            {/* Empty state */}
+            {!script && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="text-center">
+                  <div className="text-4xl mb-3">🎬</div>
+                  <p className="text-sm text-gray-500">Generate a script to see your storyboard</p>
                 </div>
               </div>
-              <p className="mt-2 text-[10px] text-gray-500 text-center">
-                Voice by ElevenLabs • Free tier: ~10K chars/month
-              </p>
-            </div>
-          )}
-
-          <div className="flex gap-2">
-            {scenes.map((scene, i) => (
-              <button
-                key={i}
-                onClick={() => { setActiveScene(i); }}
-                className={`flex-1 rounded-lg border-2 p-3 text-center transition-all duration-200 ${
-                  activeScene === i
-                    ? "border-indigo-500 bg-indigo-500/10 shadow-md shadow-indigo-500/10"
-                    : "border-gray-700 bg-gray-800/50 hover:border-gray-600"
-                }`}
-              >
-                <div className="text-xs font-semibold text-gray-300">{scene.label}</div>
-                <div className="mt-1 text-[10px] text-gray-500 line-clamp-2">
-                  {scene.text.slice(0, 60)}...
-                </div>
-              </button>
-            ))}
+            )}
           </div>
-          {/* Active scene text */}
-          {scenes[activeScene] && (
-            <div className="rounded-lg border border-gray-700/50 bg-gray-800/50 p-3">
-              <p className="text-xs font-semibold text-indigo-400 mb-1">{scenes[activeScene].label}</p>
-              <p className="text-sm text-gray-300 leading-relaxed">{scenes[activeScene].text}</p>
+
+          {/* Scene timeline */}
+          {scenes.length > 0 && (
+            <div className="mt-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-gray-500">Scene Timeline</span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={previewPlaying ? stopPreview : startPreview}
+                    className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                      previewPlaying
+                        ? "bg-red-600/20 text-red-400 hover:bg-red-600/30"
+                        : "bg-indigo-600/20 text-indigo-400 hover:bg-indigo-600/30"
+                    }`}
+                  >
+                    {previewPlaying ? (
+                      <>
+                        <span>⏹</span> Stop
+                      </>
+                    ) : (
+                      <>
+                        <span>▶</span> Preview All
+                      </>
+                    )}
+                  </button>
+                  <button
+                    onClick={onPreviewAudio}
+                    disabled={voiceGenerating || !script.trim()}
+                    className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                      voiceGenerating
+                        ? "bg-amber-600/20 text-amber-400 cursor-wait"
+                        : "bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/30"
+                    } disabled:opacity-50 disabled:cursor-not-allowed`}
+                  >
+                    {voiceGenerating ? (
+                      <>
+                        <Spinner /> Generating...
+                      </>
+                    ) : (
+                      <>
+                        <span>🔊</span> Preview Audio
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Voice error */}
+              {voiceError && (
+                <div className="flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-400">
+                  <span className="flex-shrink-0 mt-0.5">⚠️</span>
+                  <span className="flex-1">{voiceError}</span>
+                </div>
+              )}
+
+              {/* Audio player */}
+              {audioUrl && (
+                <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2.5">
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={onToggleAudio}
+                      className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white transition-colors hover:bg-emerald-500"
+                    >
+                      {audioPlaying ? (
+                        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor">
+                          <rect x="6" y="4" width="4" height="16" rx="1" />
+                          <rect x="14" y="4" width="4" height="16" rx="1" />
+                        </svg>
+                      ) : (
+                        <svg className="h-3.5 w-3.5 ml-0.5" viewBox="0 0 24 24" fill="currentColor">
+                          <polygon points="5,3 19,12 5,21" />
+                        </svg>
+                      )}
+                    </button>
+                    <div className="flex-1 min-w-0">
+                      <input
+                        type="range"
+                        min={0}
+                        max={audioDuration || 1}
+                        step={0.1}
+                        value={audioProgress}
+                        onChange={onAudioSeek}
+                        className="w-full h-1.5 accent-emerald-500 cursor-pointer appearance-none bg-gray-700 rounded-full [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-emerald-400"
+                      />
+                      <div className="flex justify-between mt-1">
+                        <span className="text-[10px] text-gray-500">{formatTime(audioProgress)}</span>
+                        <span className="text-[10px] text-gray-500">{formatTime(audioDuration)}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <p className="mt-2 text-[10px] text-gray-500 text-center">
+                    Voice by ElevenLabs • Free tier: ~10K chars/month
+                  </p>
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                {scenes.map((scene, i) => (
+                  <button
+                    key={i}
+                    onClick={() => {
+                      setActiveScene(i);
+                    }}
+                    className={`flex-1 rounded-lg border-2 p-3 text-center transition-all duration-200 ${
+                      activeScene === i
+                        ? "border-indigo-500 bg-indigo-500/10 shadow-md shadow-indigo-500/10"
+                        : "border-gray-700 bg-gray-800/50 hover:border-gray-600"
+                    }`}
+                  >
+                    <div className="text-xs font-semibold text-gray-300">{scene.label}</div>
+                    <div className="mt-1 text-[10px] text-gray-500 line-clamp-2">
+                      {scene.text.slice(0, 60)}...
+                    </div>
+                  </button>
+                ))}
+              </div>
+              {/* Active scene text */}
+              {scenes[activeScene] && (
+                <div className="rounded-lg border border-gray-700/50 bg-gray-800/50 p-3">
+                  <p className="text-xs font-semibold text-indigo-400 mb-1">{scenes[activeScene].label}</p>
+                  <p className="text-sm text-gray-300 leading-relaxed">{scenes[activeScene].text}</p>
+                </div>
+              )}
             </div>
           )}
-        </div>
+        </>
       )}
     </div>
   );

@@ -80,11 +80,12 @@ function RenderStatusPage() {
   useEffect(() => {
     let cancelled = false;
     let complete = false;
+    if (!user) return;
 
     const poll = async () => {
       if (cancelled || complete) return;
       try {
-        const result = await fetchJobStatus({ jobId });
+        const result = await fetchJobStatus({ data: { jobId } });
         if (cancelled) return;
         if (result.found) {
           setJobStatus(result);
@@ -118,7 +119,7 @@ function RenderStatusPage() {
         pollRef.current = null;
       }
     };
-  }, [jobId]);
+  }, [jobId, user]);
 
   if (!user) return null;
 

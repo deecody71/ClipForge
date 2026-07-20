@@ -269,6 +269,7 @@ function StudioPage() {
   const [script, setScript] = useState("");
   const [scriptNote, setScriptNote] = useState("");
   const [generating, setGenerating] = useState(false);
+  const [scriptError, setScriptError] = useState("");
 
   // Preview state
   const [activeScene, setActiveScene] = useState(0);
@@ -295,16 +296,24 @@ function StudioPage() {
   const handleGenerateScript = async () => {
     if (!productDescription.trim()) return;
     setGenerating(true);
+    setScriptError("");
     try {
       const result = await generateScript({
-        product: productDescription,
-        tone: scriptTone,
+        data: {
+          product: productDescription,
+          tone: scriptTone,
+        },
       });
       setScript(result.script);
       setScriptNote(result.note);
       setActiveScene(0);
     } catch (err) {
       console.error("Script generation failed:", err);
+      setScriptError(
+        err instanceof Error
+          ? err.message
+          : "Failed to generate script. Please try again."
+      );
     } finally {
       setGenerating(false);
     }
@@ -319,17 +328,19 @@ function StudioPage() {
         : selectedBg || backgrounds[0];
 
       const result = await queueRender({
-        actorId: selectedActor.id,
-        actorName: selectedActor.name,
-        actorEmoji: selectedActor.emoji,
-        actorColor: selectedActor.color,
-        backgroundId: effectiveBg.id,
-        backgroundName: effectiveBg.name,
-        backgroundGradient: effectiveBg.gradient,
-        customBgPrompt: customBgActive ? customBgPrompt : undefined,
-        script,
-        tone: scriptTone,
-        productDescription,
+        data: {
+          actorId: selectedActor.id,
+          actorName: selectedActor.name,
+          actorEmoji: selectedActor.emoji,
+          actorColor: selectedActor.color,
+          backgroundId: effectiveBg.id,
+          backgroundName: effectiveBg.name,
+          backgroundGradient: effectiveBg.gradient,
+          customBgPrompt: customBgActive ? customBgPrompt : undefined,
+          script,
+          tone: scriptTone,
+          productDescription,
+        },
       });
       // Navigate to rendering status page
       navigate({ to: "/rendering/$jobId", params: { jobId: result.jobId } });
@@ -472,6 +483,8 @@ function StudioPage() {
             script={script}
             setScript={setScript}
             scriptNote={scriptNote}
+            scriptError={scriptError}
+            setScriptError={setScriptError}
           />
         </div>
       </div>
@@ -580,6 +593,8 @@ function StudioPage() {
                 script={script}
                 setScript={setScript}
                 scriptNote={scriptNote}
+                scriptError={scriptError}
+                setScriptError={setScriptError}
               />
             </div>
           )}
@@ -881,6 +896,8 @@ interface ScriptPanelProps {
   script: string;
   setScript: (val: string) => void;
   scriptNote: string;
+  scriptError: string;
+  setScriptError: (val: string) => void;
 }
 
 function ScriptPanel({
@@ -894,6 +911,8 @@ function ScriptPanel({
   script,
   setScript,
   scriptNote,
+  scriptError,
+  setScriptError,
 }: ScriptPanelProps) {
   return (
     <div className="flex h-full flex-col space-y-4">
@@ -936,6 +955,22 @@ function ScriptPanel({
           )}
         </button>
       </div>
+
+      {/* Script error */}
+      {scriptError && (
+        <div className="flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+          <span className="flex-shrink-0 mt-0.5">⚠️</span>
+          <div className="flex-1">
+            <p>{scriptError}</p>
+          </div>
+          <button
+            onClick={() => setScriptError("")}
+            className="flex-shrink-0 text-red-400/60 hover:text-red-300"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* Script note */}
       {scriptNote && (

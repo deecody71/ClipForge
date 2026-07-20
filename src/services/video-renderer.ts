@@ -53,6 +53,29 @@ const KEN_BURNS_ZOOM_MAX = 1.06;
 
 // ─── Helpers ────────────────────────────────────────────────────────────
 
+/**
+ * Escape text for use inside FFmpeg drawtext filter's `text='...'` parameter.
+ *
+ * FFmpeg filter_complex uses single quotes as string delimiters, `:` as
+ * parameter separators, `\` as the escape character, and `%` for text
+ * expansion (like `%{pts}`). To include literal versions of these characters,
+ * we must escape them properly.
+ *
+ * The safest way to embed a literal single quote inside a single-quoted
+ * FFmpeg string is the `'\''` pattern: terminate the quoted string, insert
+ * an escaped literal quote, and restart the quoted string.
+ *
+ * Order matters: escape `\` first so we don't double-escape backslashes
+ * introduced by later replacements.
+ */
+function escapeFfmpegDrawtext(text: string): string {
+  return text
+    .replace(/\\/g, "\\\\")   // backslash → doubled (must be first)
+    .replace(/:/g, "\\:")      // colon → escaped
+    .replace(/'/g, "'\\''")    // single quote → '\'' (end quote, escaped literal, restart)
+    .replace(/%/g, "\\%");     // percent → escaped (drawtext printf expansion)
+}
+
 /** Resolve an asset image path from actorId or backgroundId */
 function resolveAssetPath(projectRoot: string, type: "actors" | "backgrounds", id: string): string {
   const assetPath = path.join(projectRoot, "src", "assets", type, `${id}.jpg`);
@@ -222,12 +245,8 @@ export async function renderVideo(input: RenderInput): Promise<RenderResult> {
     // Build drawtext enable expressions for each subtitle
     const drawtextFilters = subtitles
       .map((sub, i) => {
-        // Escape special characters for FFmpeg
-        const escaped = sub.text
-          .replace(/\\/g, "\\\\")
-          .replace(/:/g, "\\:")
-          .replace(/'/g, "\\'")
-          .replace(/%/g, "\\%");
+        // Escape special characters for FFmpeg drawtext
+        const escaped = escapeFfmpegDrawtext(sub.text);
         return (
           `drawtext=fontfile='${SUBTITLE_FONT}':` +
           `text='${escaped}':` +

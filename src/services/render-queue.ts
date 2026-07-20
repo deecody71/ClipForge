@@ -91,8 +91,8 @@ async function processJobAsync(jobId: string): Promise<void> {
     }
   }
 
-  // Mark as completed with mock output URL
-  const outputUrl = `/api/videos/${jobId}/output.mp4`;
+  // Mark as completed — link to the watch page
+  const outputUrl = `/watch/${jobId}`;
 
   await db`
     UPDATE render_jobs

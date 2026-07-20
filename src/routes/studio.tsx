@@ -15,6 +15,16 @@ import goldenRetrieverImg from "../assets/actors/golden-retriever.jpg";
 import tabbyCatImg from "../assets/actors/tabby-cat.jpg";
 import borderCollieImg from "../assets/actors/border-collie.jpg";
 
+// ─── Background images ────────────────────────────────────────────────────
+import modernOfficeImg from "../assets/backgrounds/modern-office.jpg";
+import cityStreetImg from "../assets/backgrounds/city-street.jpg";
+import natureParkImg from "../assets/backgrounds/nature-park.jpg";
+import productStudioImg from "../assets/backgrounds/product-studio.jpg";
+import livingRoomImg from "../assets/backgrounds/living-room.jpg";
+import beachSunsetImg from "../assets/backgrounds/beach-sunset.jpg";
+import abstractGradientImg from "../assets/backgrounds/abstract-gradient.jpg";
+import kitchenImg from "../assets/backgrounds/kitchen.jpg";
+
 // ─── Auth-protected loader ─────────────────────────────────────────────
 const getCurrentUser = createServerFn({ method: "GET" }).handler(async () => {
   const { getCookie } = await import("@tanstack/react-start/server");
@@ -212,17 +222,18 @@ interface Background {
   name: string;
   emoji: string;
   gradient: string;
+  imgSrc: string;
 }
 
 const backgrounds: Background[] = [
-  { id: "bg-1", name: "Modern Office", emoji: "🏢", gradient: "from-slate-600 to-slate-800" },
-  { id: "bg-2", name: "City Street", emoji: "🏙️", gradient: "from-blue-700 to-indigo-900" },
-  { id: "bg-3", name: "Nature Park", emoji: "🌳", gradient: "from-green-500 to-emerald-700" },
-  { id: "bg-4", name: "Product Studio", emoji: "📸", gradient: "from-neutral-600 to-neutral-800" },
-  { id: "bg-5", name: "Living Room", emoji: "🛋️", gradient: "from-amber-600 to-orange-800" },
-  { id: "bg-6", name: "Beach Sunset", emoji: "🏖️", gradient: "from-orange-400 via-pink-500 to-purple-600" },
-  { id: "bg-7", name: "Abstract Gradient", emoji: "🎨", gradient: "from-violet-500 via-fuchsia-500 to-cyan-500" },
-  { id: "bg-8", name: "Kitchen", emoji: "🍳", gradient: "from-yellow-600 to-red-600" },
+  { id: "bg-1", name: "Modern Office", emoji: "🏢", gradient: "from-slate-600 to-slate-800", imgSrc: modernOfficeImg },
+  { id: "bg-2", name: "City Street", emoji: "🏙️", gradient: "from-blue-700 to-indigo-900", imgSrc: cityStreetImg },
+  { id: "bg-3", name: "Nature Park", emoji: "🌳", gradient: "from-green-500 to-emerald-700", imgSrc: natureParkImg },
+  { id: "bg-4", name: "Product Studio", emoji: "📸", gradient: "from-neutral-600 to-neutral-800", imgSrc: productStudioImg },
+  { id: "bg-5", name: "Living Room", emoji: "🛋️", gradient: "from-amber-600 to-orange-800", imgSrc: livingRoomImg },
+  { id: "bg-6", name: "Beach Sunset", emoji: "🏖️", gradient: "from-orange-400 via-pink-500 to-purple-600", imgSrc: beachSunsetImg },
+  { id: "bg-7", name: "Abstract Gradient", emoji: "🎨", gradient: "from-violet-500 via-fuchsia-500 to-cyan-500", imgSrc: abstractGradientImg },
+  { id: "bg-8", name: "Kitchen", emoji: "🍳", gradient: "from-yellow-600 to-red-600", imgSrc: kitchenImg },
 ];
 
 // ─── Tone options ──────────────────────────────────────────────────────
@@ -843,9 +854,13 @@ function ActorPanel({
               }`}
             >
               <div
-                className={`h-8 w-8 flex-shrink-0 rounded-md bg-gradient-to-br ${bg.gradient} flex items-center justify-center text-sm`}
+                className="h-8 w-8 flex-shrink-0 rounded-md overflow-hidden flex items-center justify-center text-sm"
               >
-                {bg.emoji}
+                <img
+                  src={bg.imgSrc}
+                  alt={bg.name}
+                  className="h-full w-full object-cover"
+                />
               </div>
               <span className="text-xs text-gray-300 truncate">{bg.name}</span>
             </button>
@@ -933,12 +948,25 @@ function PreviewPanel({
       {/* Storyboard area */}
       <div className="relative flex-1 overflow-hidden rounded-xl border border-gray-700 bg-gray-900">
         {/* Background layer */}
-        <div
-          className={`absolute inset-0 bg-gradient-to-br ${customBgActive ? "from-purple-600 via-fuchsia-500 to-indigo-600" : (selectedBg?.gradient || "from-gray-700 to-gray-900")} transition-all duration-700`}
-        >
-          {customBgActive && (
-            <div className="flex h-full items-center justify-center text-gray-300/60 text-sm italic">
-              {customBgPrompt || "Custom background — describe it above ✨"}
+        <div className="absolute inset-0 transition-all duration-700">
+          {/* Show background image when a preset is selected and not custom */}
+          {!customBgActive && selectedBg && (
+            <img
+              src={selectedBg.imgSrc}
+              alt={selectedBg.name}
+              className="h-full w-full object-cover"
+            />
+          )}
+          {/* Fallback gradient when custom or no bg */}
+          {(customBgActive || !selectedBg) && (
+            <div
+              className={`h-full w-full bg-gradient-to-br ${customBgActive ? "from-purple-600 via-fuchsia-500 to-indigo-600" : (selectedBg?.gradient || "from-gray-700 to-gray-900")}`}
+            >
+              {customBgActive && (
+                <div className="flex h-full items-center justify-center text-gray-300/60 text-sm italic">
+                  {customBgPrompt || "Custom background — describe it above ✨"}
+                </div>
+              )}
             </div>
           )}
         </div>

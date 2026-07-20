@@ -290,6 +290,23 @@ function StudioPage() {
   const previewTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const prevAudioSceneRef = useRef(0);
 
+  // Render state
+  const [rendering, setRendering] = useState(false);
+  const [renderToast, setRenderToast] = useState<string | null>(null);
+
+  // Voice / audio state
+  const [voiceGenerating, setVoiceGenerating] = useState(false);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [audioDuration, setAudioDuration] = useState(0);
+  const [audioPlaying, setAudioPlaying] = useState(false);
+  const [audioProgress, setAudioProgress] = useState(0);
+  const [voiceError, setVoiceError] = useState("");
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioProgressInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // ── Derived ────────────────────────────────────────────────────────
+  const scenes = extractScenes(script);
+
   // ── Shared scene-transition helper (fades out → updates → fades in) ──
   const transitionToScene = useCallback(
     (idx: number) => {
@@ -319,20 +336,6 @@ function StudioPage() {
     prevAudioSceneRef.current = 0;
   }, [audioUrl]);
 
-  // Render state
-  const [rendering, setRendering] = useState(false);
-  const [renderToast, setRenderToast] = useState<string | null>(null);
-
-  // Voice / audio state
-  const [voiceGenerating, setVoiceGenerating] = useState(false);
-  const [audioUrl, setAudioUrl] = useState<string | null>(null);
-  const [audioDuration, setAudioDuration] = useState(0);
-  const [audioPlaying, setAudioPlaying] = useState(false);
-  const [audioProgress, setAudioProgress] = useState(0);
-  const [voiceError, setVoiceError] = useState("");
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const audioProgressInterval = useRef<ReturnType<typeof setInterval> | null>(null);
-
   // Toast auto-dismiss
   useEffect(() => {
     if (renderToast) {
@@ -340,9 +343,6 @@ function StudioPage() {
       return () => clearTimeout(t);
     }
   }, [renderToast]);
-
-  // ── Derived ────────────────────────────────────────────────────────
-  const scenes = extractScenes(script);
 
   // ── Handlers ────────────────────────────────────────────────────────
   const handleGenerateScript = async () => {

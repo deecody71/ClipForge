@@ -17,12 +17,13 @@ export interface SpeechResult {
 }
 
 export interface VoiceProvider {
-  generateSpeech(text: string, voiceId?: string): Promise<SpeechResult>;
+  generateSpeech(text: string, voiceId?: string, modelId?: string): Promise<SpeechResult>;
 }
 
 // ─── ElevenLabs implementation ─────────────────────────────────────────
 
 const ELEVENLABS_DEFAULT_VOICE = "21m00Tcm4TlvDq8ikWAM"; // Rachel — natural American female
+const ELEVENLABS_DEFAULT_MODEL = "eleven_turbo_v2_5"; // Fast, cost-effective model
 
 const ELEVENLABS_ENDPOINT = (voiceId: string) =>
   `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`;
@@ -30,6 +31,7 @@ const ELEVENLABS_ENDPOINT = (voiceId: string) =>
 async function elevenLabsGenerateSpeech(
   text: string,
   voiceId?: string,
+  modelId?: string,
 ): Promise<SpeechResult> {
   const apiKey = process.env.ELEVENLABS_API_KEY;
   if (!apiKey) {
@@ -37,6 +39,7 @@ async function elevenLabsGenerateSpeech(
   }
 
   const vid = voiceId || ELEVENLABS_DEFAULT_VOICE;
+  const mid = modelId || ELEVENLABS_DEFAULT_MODEL;
 
   const response = await fetch(ELEVENLABS_ENDPOINT(vid), {
     method: "POST",
@@ -46,7 +49,7 @@ async function elevenLabsGenerateSpeech(
     },
     body: JSON.stringify({
       text,
-      model_id: "eleven_monolingual_v1",
+      model_id: mid,
       voice_settings: {
         stability: 0.5,
         similarity_boost: 0.75,
@@ -114,6 +117,7 @@ export function getVoiceProvider(): VoiceProvider {
 export async function generateSpeech(
   text: string,
   voiceId?: string,
+  modelId?: string,
 ): Promise<SpeechResult> {
   if (!text || !text.trim()) {
     throw new Error("Text is required for speech generation");
@@ -123,5 +127,5 @@ export async function generateSpeech(
     throw new Error("Text exceeds the maximum length of 5000 characters");
   }
 
-  return currentProvider.generateSpeech(text.trim(), voiceId);
+  return currentProvider.generateSpeech(text.trim(), voiceId, modelId);
 }

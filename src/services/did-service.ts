@@ -137,12 +137,7 @@ export async function createTalk(
     body.webhook = params.webhookUrl;
   }
 
-  console.log("[did] Creating talk with params:", {
-    imageUrl: params.imageUrl?.slice(0, 80),
-    scriptLen: params.script?.length,
-    voiceId: params.voiceId,
-    backgroundUrl: params.backgroundUrl?.slice(0, 80),
-  });
+  console.log("[did] FULL body being sent:", JSON.stringify(body, null, 2));
 
   const response = await didFetch("/talks", { body });
   const result = (await response.json()) as {

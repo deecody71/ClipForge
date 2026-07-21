@@ -1,6 +1,7 @@
 import { sql, ensureRenderJobsTable } from "~/db";
 import { renderVideo } from "./video-renderer";
 import { isHeyGenConfigured, createVideoFromScript, waitForCompletion } from "./heygen-service";
+import { isDIDConfigured, createTalk, waitForCompletion as waitForDIDCompletion } from "./did-service";
 
 export interface RenderConfig {
   actorId: string;
@@ -30,6 +31,7 @@ export interface RenderJob {
   progress: number;
   error_message: string | null;
   heygen_video_id: string | null;
+  did_talk_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -82,7 +84,7 @@ async function processJobAsync(jobId: string): Promise<void> {
   // Fetch the job config from the database
   const rows = await db`
     SELECT id, user_id, project_name, status, config, output_url, progress, error_message,
-           heygen_video_id, created_at, updated_at
+           heygen_video_id, did_talk_id, created_at, updated_at
     FROM render_jobs
     WHERE id = ${jobId}
     LIMIT 1
@@ -106,8 +108,10 @@ async function processJobAsync(jobId: string): Promise<void> {
     console.error(`[render-queue] Progress update failed for job ${jobId}:`, err);
   }
 
-  // ── Decide: HeyGen AI or FFmpeg fallback ────────────────────────────
-  if (isHeyGenConfigured()) {
+  // ── Priority: D-ID → HeyGen → FFmpeg fallback ────────────────────
+  if (isDIDConfigured()) {
+    await processJobViaDID(db, jobId, job);
+  } else if (isHeyGenConfigured()) {
     await processJobViaHeyGen(db, jobId, job);
   } else {
     await processJobViaFfmpeg(db, jobId, job);
@@ -171,7 +175,7 @@ export async function getUserJobs(
   const db = sql();
   const rows = await db`
     SELECT id, user_id, project_name, status, config, output_url, progress, error_message,
-           heygen_video_id, created_at, updated_at
+           heygen_video_id, did_talk_id, created_at, updated_at
     FROM render_jobs
     WHERE user_id = ${userId}
     ORDER BY created_at DESC
@@ -193,12 +197,103 @@ function rowToJob(row: any): RenderJob {
     progress: row.progress,
     error_message: row.error_message,
     heygen_video_id: row.heygen_video_id || null,
+    did_talk_id: row.did_talk_id || null,
     created_at: String(row.created_at),
     updated_at: String(row.updated_at),
   };
 }
 
 // ─── Processing pipelines ──────────────────────────────────────────────
+
+/**
+ * Process a job via D-ID's talking-head API.
+ *
+ * Maps ClipForge's render config (actor image, script, background) to D-ID's
+ * talk API, then polls for completion and downloads the result.
+ */
+async function processJobViaDID(
+  db: ReturnType<typeof sql>,
+  jobId: string,
+  job: RenderJob,
+): Promise<void> {
+  try {
+    console.log(`[render-queue] Starting D-ID render for job ${jobId}...`);
+
+    // Construct the webhook callback URL
+    const publicUrl = process.env.PUBLIC_URL || "http://localhost:3000";
+    const webhookUrl = `${publicUrl}/api/did/webhook`;
+
+    // Map render config to D-ID params
+    // Use the actor's imgSrc as the source image for the talking head
+    const imageUrl = job.config.imgSrc
+      ? (job.config.imgSrc.startsWith("http")
+        ? job.config.imgSrc
+        : `${publicUrl}${job.config.imgSrc}`)
+      : undefined;
+
+    if (!imageUrl) {
+      throw new Error("No actor image URL available for D-ID talk");
+    }
+
+    // Background image URL (optional)
+    const backgroundUrl = job.config.bgImgSrc
+      ? (job.config.bgImgSrc.startsWith("http")
+        ? job.config.bgImgSrc
+        : `${publicUrl}${job.config.bgImgSrc}`)
+      : undefined;
+
+    console.log(`[render-queue] D-ID image URL: ${imageUrl.slice(0, 100)}`);
+    console.log(`[render-queue] D-ID script length: ${job.config.script?.length || 0} chars`);
+
+    // Create the talk via D-ID
+    const { talkId } = await createTalk({
+      imageUrl,
+      script: job.config.script,
+      backgroundUrl,
+      webhookUrl,
+    });
+
+    // Store the D-ID talk ID
+    await db`
+      UPDATE render_jobs
+      SET did_talk_id = ${talkId}, progress = 30, updated_at = now()
+      WHERE id = ${jobId} AND status = 'processing'
+    `;
+
+    console.log(`[render-queue] D-ID talk ${talkId} created for job ${jobId}, waiting for completion...`);
+
+    // Wait for D-ID to complete the video (polling with webhook fallback)
+    const projectRoot = "/home/team/shared/site";
+    const outputPath = `${projectRoot}/public/renders/${jobId}.mp4`;
+    const outputUrl = `/renders/${jobId}.mp4`;
+
+    const result = await waitForDIDCompletion(talkId, outputPath);
+
+    // Mark as completed
+    await db`
+      UPDATE render_jobs
+      SET status = 'completed',
+          progress = 100,
+          output_url = ${outputUrl},
+          updated_at = now()
+      WHERE id = ${jobId}
+    `;
+
+    console.log(`[render-queue] Job ${jobId} completed via D-ID: ${result.resultUrl}`);
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    console.error(`[render-queue] D-ID job ${jobId} failed:`, errorMessage);
+
+    await db`
+      UPDATE render_jobs
+      SET status = 'failed',
+          progress = 0,
+          error_message = ${errorMessage},
+          updated_at = now()
+      WHERE id = ${jobId}
+    `;
+  }
+}
 
 /**
  * Process a job via HeyGen's AI avatar video generation API.

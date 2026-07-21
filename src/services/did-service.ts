@@ -127,9 +127,13 @@ export async function createTalk(
   };
 
   if (params.backgroundUrl) {
-    body.background = {
-      type: "image",
-      source_url: params.backgroundUrl,
+    // Put background inside config where D-ID expects it
+    body.config = {
+      ...(body.config as object),
+      background: {
+        type: "image",
+        source_url: params.backgroundUrl,
+      },
     };
   }
 

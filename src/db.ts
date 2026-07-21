@@ -90,6 +90,15 @@ export async function ensureRenderJobsTable(): Promise<void> {
     // Older Postgres versions may not support IF NOT EXISTS — safe to ignore
   }
 
+  // Add did_talk_id column if it doesn't exist (for D-ID integration)
+  try {
+    await db`
+      ALTER TABLE render_jobs ADD COLUMN IF NOT EXISTS did_talk_id TEXT
+    `;
+  } catch {
+    // Older Postgres versions may not support IF NOT EXISTS — safe to ignore
+  }
+
   console.log("[db] render_jobs table initialized");
 }
 

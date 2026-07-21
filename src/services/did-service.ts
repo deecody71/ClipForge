@@ -129,7 +129,7 @@ export async function createTalk(
   if (params.backgroundUrl) {
     body.background = {
       type: "image",
-      url: params.backgroundUrl,
+      source_url: params.backgroundUrl,
     };
   }
 

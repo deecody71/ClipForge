@@ -1,14 +1,19 @@
 import { sql, ensureRenderJobsTable } from "~/db";
 import { renderVideo } from "./video-renderer";
+import { isHeyGenConfigured, createVideoFromScript, waitForCompletion } from "./heygen-service";
 
 export interface RenderConfig {
   actorId: string;
   actorName: string;
   actorEmoji: string;
   actorColor: string;
+  /** Vite-hashed image URL for the actor (e.g., /assets/professional-male-XXXX.jpg) */
+  imgSrc?: string;
   backgroundId: string;
   backgroundName: string;
   backgroundGradient: string;
+  /** Vite-hashed image URL for the background */
+  bgImgSrc?: string;
   customBgPrompt?: string;
   script: string;
   tone: string;
@@ -24,6 +29,7 @@ export interface RenderJob {
   output_url: string | null;
   progress: number;
   error_message: string | null;
+  heygen_video_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -58,7 +64,10 @@ export async function enqueueRender(
 }
 
 /**
- * Process a job asynchronously using the real FFmpeg render pipeline.
+ * Process a job asynchronously.
+ *
+ * If HEYGEN_API_KEY is set, uses HeyGen's AI avatar video generation.
+ * Otherwise falls back to the local FFmpeg render pipeline.
  */
 async function processJobAsync(jobId: string): Promise<void> {
   const db = sql();
@@ -73,7 +82,7 @@ async function processJobAsync(jobId: string): Promise<void> {
   // Fetch the job config from the database
   const rows = await db`
     SELECT id, user_id, project_name, status, config, output_url, progress, error_message,
-           created_at, updated_at
+           heygen_video_id, created_at, updated_at
     FROM render_jobs
     WHERE id = ${jobId}
     LIMIT 1
@@ -97,38 +106,11 @@ async function processJobAsync(jobId: string): Promise<void> {
     console.error(`[render-queue] Progress update failed for job ${jobId}:`, err);
   }
 
-  try {
-    console.log(`[render-queue] Starting render for job ${jobId}...`);
-    const result = await renderVideo({
-      jobId,
-      config: job.config,
-      projectRoot: "/home/team/shared/site",
-    });
-
-    // Update progress to 90% after render completes
-    await db`
-      UPDATE render_jobs
-      SET progress = 90, updated_at = now()
-      WHERE id = ${jobId} AND status = 'processing'
-    `;
-
-    // Mark as completed with the real output URL
-    await db`
-      UPDATE render_jobs
-      SET status = 'completed', progress = 100, output_url = ${result.outputUrl}, updated_at = now()
-      WHERE id = ${jobId}
-    `;
-
-    console.log(`[render-queue] Job ${jobId} completed: ${result.outputUrl}`);
-  } catch (err) {
-    const errorMessage = err instanceof Error ? err.message : String(err);
-    console.error(`[render-queue] Job ${jobId} failed:`, errorMessage);
-
-    await db`
-      UPDATE render_jobs
-      SET status = 'failed', progress = 0, error_message = ${errorMessage}, updated_at = now()
-      WHERE id = ${jobId}
-    `;
+  // ── Decide: HeyGen AI or FFmpeg fallback ────────────────────────────
+  if (isHeyGenConfigured()) {
+    await processJobViaHeyGen(db, jobId, job);
+  } else {
+    await processJobViaFfmpeg(db, jobId, job);
   }
 }
 
@@ -189,7 +171,7 @@ export async function getUserJobs(
   const db = sql();
   const rows = await db`
     SELECT id, user_id, project_name, status, config, output_url, progress, error_message,
-           created_at, updated_at
+           heygen_video_id, created_at, updated_at
     FROM render_jobs
     WHERE user_id = ${userId}
     ORDER BY created_at DESC
@@ -210,7 +192,154 @@ function rowToJob(row: any): RenderJob {
     output_url: row.output_url,
     progress: row.progress,
     error_message: row.error_message,
+    heygen_video_id: row.heygen_video_id || null,
     created_at: String(row.created_at),
     updated_at: String(row.updated_at),
   };
+}
+
+// ─── Processing pipelines ──────────────────────────────────────────────
+
+/**
+ * Process a job via HeyGen's AI avatar video generation API.
+ */
+async function processJobViaHeyGen(
+  db: ReturnType<typeof sql>,
+  jobId: string,
+  job: RenderJob,
+): Promise<void> {
+  try {
+    console.log(`[render-queue] Starting HeyGen render for job ${jobId}...`);
+
+    // Construct the callback URL for the webhook
+    const publicUrl = process.env.PUBLIC_URL || "http://localhost:3000";
+    const callbackUrl = `${publicUrl}/api/heygen/webhook`;
+
+    // Create the video via HeyGen v1 API (handles TTS internally)
+    const { videoId } = await createVideoFromScript({
+      videoName: job.project_name,
+      script: job.config.script,
+      dimension: { width: 1280, height: 720 },
+      caption: true,
+      callbackUrl,
+      callbackId: `clipforge:${jobId}`,
+      background: job.config.backgroundGradient
+        ? {
+            type: "color",
+            value: gradientToColor(job.config.backgroundGradient),
+          }
+        : undefined,
+    });
+
+    // Store the HeyGen video ID
+    await db`
+      UPDATE render_jobs
+      SET heygen_video_id = ${videoId}, progress = 30, updated_at = now()
+      WHERE id = ${jobId} AND status = 'processing'
+    `;
+
+    console.log(`[render-queue] HeyGen video ${videoId} created for job ${jobId}, waiting for completion...`);
+
+    // Wait for HeyGen to complete the video (polling with webhook fallback)
+    const projectRoot = "/home/team/shared/site";
+    const outputPath = `${projectRoot}/public/renders/${jobId}.mp4`;
+    const outputUrl = `/renders/${jobId}.mp4`;
+
+    const result = await waitForCompletion(videoId, outputPath);
+
+    // Mark as completed
+    await db`
+      UPDATE render_jobs
+      SET status = 'completed',
+          progress = 100,
+          output_url = ${outputUrl},
+          heygen_video_id = ${videoId},
+          updated_at = now()
+      WHERE id = ${jobId}
+    `;
+
+    console.log(`[render-queue] Job ${jobId} completed via HeyGen: ${result.videoUrl}`);
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    console.error(`[render-queue] HeyGen job ${jobId} failed:`, errorMessage);
+
+    await db`
+      UPDATE render_jobs
+      SET status = 'failed',
+          progress = 0,
+          error_message = ${errorMessage},
+          updated_at = now()
+      WHERE id = ${jobId}
+    `;
+  }
+}
+
+/**
+ * Process a job via the local FFmpeg render pipeline (fallback).
+ */
+async function processJobViaFfmpeg(
+  db: ReturnType<typeof sql>,
+  jobId: string,
+  job: RenderJob,
+): Promise<void> {
+  try {
+    console.log(`[render-queue] Starting FFmpeg render for job ${jobId}...`);
+    const result = await renderVideo({
+      jobId,
+      config: job.config,
+      projectRoot: "/home/team/shared/site",
+    });
+
+    // Update progress to 90% after render completes
+    await db`
+      UPDATE render_jobs
+      SET progress = 90, updated_at = now()
+      WHERE id = ${jobId} AND status = 'processing'
+    `;
+
+    // Mark as completed with the real output URL
+    await db`
+      UPDATE render_jobs
+      SET status = 'completed', progress = 100, output_url = ${result.outputUrl}, updated_at = now()
+      WHERE id = ${jobId}
+    `;
+
+    console.log(`[render-queue] Job ${jobId} completed: ${result.outputUrl}`);
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    console.error(`[render-queue] Job ${jobId} failed:`, errorMessage);
+
+    await db`
+      UPDATE render_jobs
+      SET status = 'failed', progress = 0, error_message = ${errorMessage}, updated_at = now()
+      WHERE id = ${jobId}
+    `;
+  }
+}
+
+/**
+ * Extract an approximate color from a Tailwind gradient class string.
+ * Maps common gradient presets to hex colors for HeyGen backgrounds.
+ */
+function gradientToColor(gradient: string): string {
+  const colorMap: Record<string, string> = {
+    "from-blue-600": "#2563eb",
+    "from-pink-500": "#ec4899",
+    "from-gray-500": "#6b7280",
+    "from-purple-500": "#a855f7",
+    "from-emerald-500": "#10b981",
+    "from-amber-500": "#f59e0b",
+    "from-yellow-500": "#eab308",
+    "from-orange-400": "#fb923c",
+    "from-slate-600": "#475569",
+    "from-green-500": "#22c55e",
+    "from-neutral-600": "#525252",
+    "from-violet-500": "#8b5cf6",
+  };
+
+  for (const [key, color] of Object.entries(colorMap)) {
+    if (gradient.includes(key)) return color;
+  }
+
+  return "#2563eb"; // default blue
 }

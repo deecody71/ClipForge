@@ -130,9 +130,11 @@ const queueRender = createServerFn({ method: "POST" })
       actorName: string;
       actorEmoji: string;
       actorColor: string;
+      imgSrc?: string;
       backgroundId: string;
       backgroundName: string;
       backgroundGradient: string;
+      bgImgSrc?: string;
       customBgPrompt?: string;
       script: string;
       tone: string;
@@ -143,9 +145,11 @@ const queueRender = createServerFn({ method: "POST" })
       actorName: d.actorName || "",
       actorEmoji: d.actorEmoji || "",
       actorColor: d.actorColor || "",
+      imgSrc: d.imgSrc || "",
       backgroundId: d.backgroundId || "",
       backgroundName: d.backgroundName || "",
       backgroundGradient: d.backgroundGradient || "",
+      bgImgSrc: d.bgImgSrc || "",
       customBgPrompt: d.customBgPrompt || "",
       script: d.script || "",
       tone: d.tone || "",
@@ -171,9 +175,11 @@ const queueRender = createServerFn({ method: "POST" })
       actorName: data.actorName,
       actorEmoji: data.actorEmoji,
       actorColor: data.actorColor,
+      imgSrc: data.imgSrc || undefined,
       backgroundId: data.backgroundId,
       backgroundName: data.backgroundName,
       backgroundGradient: data.backgroundGradient,
+      bgImgSrc: data.bgImgSrc || undefined,
       customBgPrompt: data.customBgPrompt || undefined,
       script: data.script,
       tone: data.tone,
@@ -385,9 +391,11 @@ function StudioPage() {
           actorName: selectedActor.name,
           actorEmoji: selectedActor.emoji,
           actorColor: selectedActor.color,
+          imgSrc: selectedActor.imgSrc,
           backgroundId: effectiveBg.id,
           backgroundName: effectiveBg.name,
           backgroundGradient: effectiveBg.gradient,
+          bgImgSrc: (selectedBg || backgrounds[0]).imgSrc,
           customBgPrompt: customBgActive ? customBgPrompt : undefined,
           script,
           tone: scriptTone,

@@ -10,6 +10,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { useState, useEffect, type ReactNode } from "react";
 import { readFile } from "node:fs/promises";
 import { verifyToken, TOKEN_COOKIE } from "~/auth";
+import { HelpPanel } from "~/components/HelpPanel";
 
 import appCss from "~/styles/app.css?url";
 
@@ -91,6 +92,7 @@ function RootComponent() {
     <RootDocument>
       <NavBar businessName={data.businessName} user={data.user} />
       <Outlet />
+      <HelpPanel />
     </RootDocument>
   );
 }

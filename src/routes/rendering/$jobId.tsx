@@ -203,7 +203,7 @@ function RenderStatusPage() {
                   <Spinner large />
                 </div>
                 <p className="text-sm text-indigo-300">Rendering your commercial...</p>
-                <p className="mt-1 text-xs text-gray-500">This usually takes 30-60 seconds</p>
+                <p className="mt-1 text-xs text-gray-500">This usually takes 2-5 minutes</p>
               </div>
             )}
 

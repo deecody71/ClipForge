@@ -19,6 +19,8 @@ export interface RenderConfig {
   script: string;
   tone: string;
   productDescription?: string;
+  /** Microsoft voice ID for D-ID TTS (e.g., en-US-GuyNeural, en-US-JennyNeural) */
+  voiceId?: string;
 }
 
 export interface RenderJob {
@@ -266,16 +268,21 @@ async function processJobViaDID(
         : `${publicUrl}${job.config.bgImgSrc}`)
       : undefined;
 
+    // Voice ID for D-ID TTS (determined by actor)
+    const voiceId = job.config.voiceId || "en-US-JennyNeural";
+
     // Clean the script to remove stage directions and formatting
     const cleanedScript = cleanScriptForDID(job.config.script);
     console.log(`[render-queue] D-ID image URL: ${imageUrl.slice(0, 100)}`);
     console.log(`[render-queue] D-ID script: ${cleanedScript.length} chars (from ${job.config.script?.length || 0})`);
-    console.log(`[render-queue] D-ID background: ${backgroundUrl || "none"}`);
+    console.log(`[render-queue] D-ID voiceId: ${voiceId} (from config: ${job.config.voiceId || "not set, using default"})`);
+    console.log(`[render-queue] D-ID background debug: bgImgSrc="${job.config.bgImgSrc || "(empty)"}" | backgroundUrl="${backgroundUrl || "(empty)"}" | isTruthy=${!!backgroundUrl} | backgroundName="${job.config.backgroundName || "(empty)"}"`);
 
     // Create the talk via D-ID
     const { talkId } = await createTalk({
       imageUrl,
       script: cleanedScript,
+      voiceId,
       backgroundUrl,
       webhookUrl,
     });

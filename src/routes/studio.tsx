@@ -139,6 +139,7 @@ const queueRender = createServerFn({ method: "POST" })
       script: string;
       tone: string;
       productDescription?: string;
+      voiceId?: string;
     };
     return {
       actorId: d.actorId || "",
@@ -154,6 +155,7 @@ const queueRender = createServerFn({ method: "POST" })
       script: d.script || "",
       tone: d.tone || "",
       productDescription: d.productDescription || "",
+      voiceId: d.voiceId || "",
     };
   })
   .handler(async ({ data }) => {
@@ -184,6 +186,7 @@ const queueRender = createServerFn({ method: "POST" })
       script: data.script,
       tone: data.tone,
       productDescription: data.productDescription || undefined,
+      voiceId: data.voiceId || undefined,
     };
 
     const job = await enqueueRender(payload.userId, config);
@@ -254,6 +257,16 @@ function extractScenes(script: string): { label: string; text: string }[] {
     scenes.push({ label: match[1], text: match[2].trim() });
   }
   return scenes;
+}
+
+// ─── Voice ID helper ─────────────────────────────────────────────────────
+function getVoiceIdForActor(actorName: string): string {
+  // Male human actors get male voice
+  if (["Professional Male", "Senior Expert", "Casual Male"].includes(actorName)) {
+    return "en-US-GuyNeural";
+  }
+  // Female human actors, animals, and everything else get female voice
+  return "en-US-JennyNeural";
 }
 
 // ─── Page component ────────────────────────────────────────────────────
@@ -400,6 +413,7 @@ function StudioPage() {
           script,
           tone: scriptTone,
           productDescription,
+          voiceId: getVoiceIdForActor(selectedActor.name),
         },
       });
       // Navigate to rendering status page

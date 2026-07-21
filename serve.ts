@@ -18,6 +18,7 @@ import handler from "./dist/server/server.js";
 const PORT = 3000;
 const HOST = "0.0.0.0";
 const CLIENT_DIR = `${import.meta.dir}/dist/client`;
+const PUBLIC_DIR = `${import.meta.dir}/public`;
 
 // Free PORT regardless of which user owns the current listener. lsof runs under
 // sudo so it can see (and the kill can signal) a process owned by another user;
@@ -42,7 +43,10 @@ for (let attempt = 1; ; attempt++) {
       async fetch(req) {
         const { pathname } = new URL(req.url);
         if (pathname !== "/") {
-          const file = Bun.file(CLIENT_DIR + pathname);
+          let file = Bun.file(CLIENT_DIR + pathname);
+          if (await file.exists()) return new Response(file);
+          // Fallback: check public/ for runtime-generated files (renders, etc.)
+          file = Bun.file(PUBLIC_DIR + pathname);
           if (await file.exists()) return new Response(file);
         }
         return (

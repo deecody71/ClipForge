@@ -137,6 +137,9 @@ function NavBar({ businessName, user }: { businessName: string; user: LoaderData
           <a href="#pricing" className="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white">
             Pricing
           </a>
+          <Link to="/help" className="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white">
+            Help
+          </Link>
           {effectiveUser ? (
             <>
               <Link to="/dashboard" className="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white">

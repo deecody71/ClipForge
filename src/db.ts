@@ -75,10 +75,21 @@ export async function ensureRenderJobsTable(): Promise<void> {
       progress INTEGER NOT NULL DEFAULT 0
         CHECK (progress >= 0 AND progress <= 100),
       error_message TEXT,
+      heygen_video_id TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
   `;
+
+  // Add heygen_video_id column if it doesn't exist (migration for existing tables)
+  try {
+    await db`
+      ALTER TABLE render_jobs ADD COLUMN IF NOT EXISTS heygen_video_id TEXT
+    `;
+  } catch {
+    // Older Postgres versions may not support IF NOT EXISTS — safe to ignore
+  }
+
   console.log("[db] render_jobs table initialized");
 }
 

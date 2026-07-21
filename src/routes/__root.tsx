@@ -7,7 +7,7 @@ import {
   useNavigate,
 } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
-import { useState, type ReactNode } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import { readFile } from "node:fs/promises";
 import { verifyToken, TOKEN_COOKIE } from "~/auth";
 
@@ -98,6 +98,16 @@ function RootComponent() {
 function NavBar({ businessName, user }: { businessName: string; user: LoaderData["user"] }) {
   const navigate = useNavigate();
   const [loggingOut, setLoggingOut] = useState(false);
+  const [clientUser, setClientUser] = useState<LoaderData["user"] | undefined>(undefined);
+
+  // Re-check auth on client-side mount — loader data may be stale from SSR cache
+  useEffect(() => {
+    getAuthUser()
+      .then((u) => setClientUser(u ?? null))
+      .catch(() => {});
+  }, []);
+
+  const effectiveUser = clientUser !== undefined ? clientUser : user;
 
   const handleLogout = async () => {
     setLoggingOut(true);
@@ -125,7 +135,7 @@ function NavBar({ businessName, user }: { businessName: string; user: LoaderData
           <a href="#pricing" className="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white">
             Pricing
           </a>
-          {user ? (
+          {effectiveUser ? (
             <>
               <Link to="/dashboard" className="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white">
                 Dashboard
@@ -158,7 +168,7 @@ function NavBar({ businessName, user }: { businessName: string; user: LoaderData
 
         {/* Mobile nav */}
         <div className="flex gap-3 sm:hidden">
-          {user ? (
+          {effectiveUser ? (
             <>
               <Link to="/dashboard" className="text-sm font-medium text-gray-600 dark:text-gray-400">
                 Dashboard

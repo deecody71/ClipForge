@@ -206,6 +206,30 @@ function rowToJob(row: any): RenderJob {
 // ─── Processing pipelines ──────────────────────────────────────────────
 
 /**
+ * Clean a script for D-ID TTS by stripping stage directions,
+ * scene markers, and markup that the AI voice would read aloud.
+ */
+function cleanScriptForDID(script: string): string {
+  if (!script) return "";
+  return script
+    .split("\n")
+    .map((line) => {
+      let cleaned = line.replace(/\([^)]*\)/g, "");
+      cleaned = cleaned.replace(/\[[^\]]*\]/g, "");
+      cleaned = cleaned.replace(/\*{1,3}/g, "");
+      cleaned = cleaned.trim();
+      return cleaned;
+    })
+    .filter((line) => {
+      if (!line) return false;
+      if (/^(SCENE|Scene|ACT|Act)\s*\d*[:.]/i.test(line)) return false;
+      if (line.length < 3 && /^[.,;:!?\-–—]+$/.test(line)) return false;
+      return true;
+    })
+    .join("\n");
+}
+
+/**
  * Process a job via D-ID's talking-head API.
  *
  * Maps ClipForge's render config (actor image, script, background) to D-ID's
@@ -242,13 +266,16 @@ async function processJobViaDID(
         : `${publicUrl}${job.config.bgImgSrc}`)
       : undefined;
 
+    // Clean the script to remove stage directions and formatting
+    const cleanedScript = cleanScriptForDID(job.config.script);
     console.log(`[render-queue] D-ID image URL: ${imageUrl.slice(0, 100)}`);
-    console.log(`[render-queue] D-ID script length: ${job.config.script?.length || 0} chars`);
+    console.log(`[render-queue] D-ID script: ${cleanedScript.length} chars (from ${job.config.script?.length || 0})`);
+    console.log(`[render-queue] D-ID background: ${backgroundUrl || "none"}`);
 
     // Create the talk via D-ID
     const { talkId } = await createTalk({
       imageUrl,
-      script: job.config.script,
+      script: cleanedScript,
       backgroundUrl,
       webhookUrl,
     });
